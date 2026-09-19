@@ -1,0 +1,33 @@
+
+===== annealing 직전 (step 19200) =====
+  perplexity [웹]: 18.84
+  perplexity [고품질]: 19.74
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+  copa        66.3% (n=1000) 예측분포 {0: 490, 1: 510}
+  boolq       49.9% (n=1404) 예측분포 {0: 1103, 1: 301}
+  hellaswag   46.2% (n=500) 예측분포 {0: 128, 1: 134, 2: 120, 3: 118}
+  [대한민국의 수도는] 10/10 | greedy: 서울이다.
+
+역사 
+조선시대 초기에는 한양으로 불리다가 139
+  [훈민정음을 창제한 왕은] 9/10 | greedy: 세종이다. 세종은 1443년(세종 25년)
+  [물의 화학식은] 2/10 | greedy: C2H6O2이다.
+
+C2H6O2
+  [한국에서 가장 높은 산은] 5/10 | greedy: 해발 1,848m의 백두산이다. 백두산 정상에는
+
+===== 최종 (step 23999) =====
+  perplexity [웹]: 13.87
+  perplexity [고품질]: 12.09
+  copa        67.1% (n=1000) 예측분포 {0: 494, 1: 506}
+  boolq       50.0% (n=1404) 예측분포 {0: 1373, 1: 31}
+  hellaswag   40.0% (n=500) 예측분포 {0: 141, 1: 117, 2: 116, 3: 126}
+  [대한민국의 수도는] 10/10 | greedy: 서울특별시이다. 대한민국의 수도는 서울이다. 대한민국의 수도는 서울이다. 대한민국의
+  [훈민정음을 창제한 왕은] 10/10 | greedy: 세종이다. 세종은 훈민정음을 창제한 후, 훈민정
+  [물의 화학식은] 0/10 | greedy: 다음과 같습니다.
+
+```
+C6H10O5
+  [한국에서 가장 높은 산은] 2/10 | greedy: 에베레스트산(8,848m)이다. 2010
+
+저장: logs/final_eval.json
