@@ -6,7 +6,7 @@
 - 데이터: 공개 한국어 instruction 데이터셋 (KoAlpaca v1.1a, KULLM v2)
 
 사용 예:
-  python sft.py --base checkpoints/base_400m/latest.pt --config sft_400m
+  python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
 """
 
 import argparse
@@ -47,8 +47,10 @@ def build_examples(tok, max_len, limit=None):
             if not user or not assistant:
                 continue
             # user 파트 (loss 없음)
-            ctx = tok.encode(f"user\n{user}")
-            ctx = [im_start] + ctx + [im_end] + [im_start] + tok.encode("assistant\n")
+            # 형식은 sample.py --chat, annealing instruction 데이터와 정확히 같아야 한다:
+            #   <|im_start|>user\n{질문}<|im_end|>\n<|im_start|>assistant\n{답}<|im_end|>
+            ctx = ([im_start] + tok.encode(f"user\n{user}") + [im_end] + tok.encode("\n")
+                   + [im_start] + tok.encode("assistant\n"))
             # assistant 파트 (loss 있음)
             ans = tok.encode(assistant) + [im_end]
             ids = (ctx + ans)[:max_len]
@@ -75,10 +77,34 @@ def collate(batch, pad_id):
     return x, y
 
 
+@torch.no_grad()
+def val_loss(model, val_ex, pad_id, B, device, device_type, loss_chunk):
+    """assistant 응답 토큰에 대한 평균 loss (학습에 안 쓴 예제)."""
+    model.eval()
+    tot, n = 0.0, 0
+    for i in range(0, len(val_ex) - B + 1, B):
+        x, y = collate(val_ex[i : i + B], pad_id)
+        x, y = x.to(device), y.to(device)
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            _, loss = model(x, y, loss_chunk=loss_chunk)
+        tot += loss.item()
+        n += 1
+    model.train()
+    return tot / max(1, n)
+
+
+def save(model, step, config, ckpt_dir):
+    """원자적 저장 — 임시 파일에 쓴 뒤 rename."""
+    path = os.path.join(ckpt_dir, "latest.pt")
+    torch.save({"model": model.state_dict(), "step": step, "config": config}, path + ".tmp")
+    os.replace(path + ".tmp", path)
+    return path
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True, help="사전학습 체크포인트")
-    ap.add_argument("--config", default="sft_400m")
+    ap.add_argument("--config", default="sft_1b")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--limit", type=int, default=None, help="데이터셋별 예제 수 제한 (테스트용)")
     args = ap.parse_args()
@@ -94,9 +120,14 @@ def main():
     val_ex, train_ex = examples[:n_val], examples[n_val:]
     print(f"train {len(train_ex)} / val {len(val_ex)} 예제")
 
-    ckpt = torch.load(args.base, map_location=device, weights_only=False)
-    model = GPT(conf.model).to(device)
+    # CPU로 읽는다. 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)도 들어 있어서
+    # GPU로 바로 올리면 그만큼이 학습 내내 GPU에 남는다.
+    ckpt = torch.load(args.base, map_location="cpu", weights_only=False)
+    model = GPT(conf.model)
     model.load_state_dict(ckpt["model"])
+    print(f"베이스 모델: {args.base} (step {ckpt['step']})")
+    del ckpt
+    model = model.to(device)
     opt = torch.optim.AdamW(model.param_groups(tcfg["weight_decay"]),
                             lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device == "cuda"))
 
@@ -111,6 +142,9 @@ def main():
     def batches(data):
         for i in range(0, len(data) - B + 1, B):
             yield collate(data[i : i + B], pad_id)
+
+    vl0 = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
+    print(f"SFT 전 val loss (베이스 모델): {vl0:.4f}", flush=True)
 
     model.train()
     step = 0
@@ -143,12 +177,15 @@ def main():
 
             if step % 10 == 0:
                 print(f"epoch {epoch} step {step}/{max_steps} | loss {loss_acc:.4f} | lr {lr:.2e} "
-                      f"| {time.time()-t0:.0f}s")
+                      f"| {time.time()-t0:.0f}s", flush=True)
             if step > 0 and step % tcfg["save_every"] == 0 or step == max_steps - 1:
-                torch.save({"model": model.state_dict(), "step": step, "config": args.config},
-                           os.path.join(ckpt_dir, "latest.pt"))
-                print(f"체크포인트 저장: {ckpt_dir}/latest.pt")
+                print(f"체크포인트 저장: {save(model, step, args.config, ckpt_dir)} (step {step})",
+                      flush=True)
             step += 1
+
+        vl = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
+        print(f"=== epoch {epoch} 종료 | val loss {vl:.4f} ===", flush=True)
+        save(model, step - 1, args.config, ckpt_dir)
 
     print("SFT 완료 — python sample.py --ckpt", os.path.join(ckpt_dir, "latest.pt"), "--chat")
 
