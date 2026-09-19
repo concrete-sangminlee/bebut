@@ -197,7 +197,8 @@ def main():
 
             # 장기 학습용 스냅샷 — 덮어쓰지 않고 따로 남겨 되돌릴 수 있게 한다
             ms = tcfg.get("milestone_every")
-            if ms and step % ms == 0:
+            # 마지막 step(max_steps-1)은 ms의 배수가 아니라서 따로 챙긴다 — 최종 모델 스냅샷이 빠졌던 실수
+            if ms and (step % ms == 0 or step == tcfg["max_steps"] - 1):
                 snap = os.path.join(ckpt_dir, f"step_{step:06d}.pt")
                 torch.save(ckpt, snap)
                 print(f"스냅샷 저장: {snap}")
