@@ -1,7 +1,7 @@
 #!/bin/bash
 # 일시정지한 학습을 재개한다. latest.pt에서 자동으로 이어지며,
 # step 19,200 이후이므로 재개 즉시 annealing 고품질 데이터로 전환된다.
-cd ~/llm_from_scratch
+cd "$(dirname "$0")"   # 저장소 위치에 의존하지 않는다
 
 if pgrep -f "[t]rain.py --config base_1b" > /dev/null; then
   echo "이미 학습이 돌고 있습니다. 중복 실행하지 않습니다."

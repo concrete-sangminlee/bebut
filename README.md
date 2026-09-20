@@ -1,4 +1,4 @@
-# llm_from_scratch — 한국어 1.2B LLM을 밑바닥부터
+# bebut — 한국어 1.2B LLM을 밑바닥부터
 
 토크나이저부터 직접 만들어 **한국어 1.2B 대화 모델**을 완성한 기록입니다.
 `transformers` 없이 순수 PyTorch로 구현했고, GPU 한 장(RTX 6000 Ada 48GB)에서

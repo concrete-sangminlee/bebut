@@ -118,7 +118,7 @@ def main():
     if args.wandb:
         import wandb
 
-        run = wandb.init(project="llm_from_scratch", name=args.config, config=tcfg)
+        run = wandb.init(project="bebut", name=args.config, config=tcfg)
 
     metrics_path = os.path.join(ckpt_dir, "metrics.csv")
     metrics_f = open(metrics_path, "a", newline="")
