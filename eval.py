@@ -3,12 +3,13 @@
 perplexity: val shard에서 exp(평균 next-token loss). 낮을수록 좋다.
 
 KOBEST(BoolQ·COPA·HellaSwag): 베이스 모델은 지시를 못 따르므로 log-likelihood
-스코어링을 쓴다 — 문제를 텍스트로 만들고 각 선택지를 이어붙인 뒤, 선택지 부분의
-토큰 로그확률 합이 가장 높은 것을 모델의 답으로 간주 (GPT-3 방식).
+스코어링을 쓴다 — 문제를 텍스트로 만들고 각 선택지를 이어붙여 점수를 매긴다.
+점수는 비조건부 정규화를 거친다(normalized_score 참고): 로그확률 합만 쓰면 짧거나
+흔한 선택지가 문맥과 무관하게 이긴다. 예측 분포도 함께 반환해 쏠림을 감지한다.
 
 사용 예:
-  python eval.py --ckpt checkpoints/base_400m/latest.pt --ppl
-  python eval.py --ckpt checkpoints/base_400m/latest.pt --kobest copa --shots 5
+  python eval.py --ckpt checkpoints/base_1b/latest.pt --ppl
+  python eval.py --ckpt checkpoints/base_1b/latest.pt --kobest copa --shots 5
 """
 
 import argparse
@@ -112,7 +113,7 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--ppl", action="store_true")
-    ap.add_argument("--shard-dir", default="data/shards")
+    ap.add_argument("--shard-dir", default="data/shards_26b")
     ap.add_argument("--kobest", choices=list(FORMATTERS), default=None)
     ap.add_argument("--shots", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None)

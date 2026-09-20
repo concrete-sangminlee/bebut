@@ -1,8 +1,8 @@
 """체크포인트에서 텍스트 생성. --chat이면 SFT 모델용 대화 모드.
 
 사용 예:
-  python sample.py --ckpt checkpoints/base_400m/latest.pt --prompt "대한민국의 수도는"
-  python sample.py --ckpt checkpoints/sft_400m/latest.pt --chat
+  python sample.py --ckpt checkpoints/base_1b/latest.pt --prompt "대한민국의 수도는"
+  python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat
 """
 
 import argparse

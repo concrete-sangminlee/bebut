@@ -11,7 +11,7 @@
 
 사용 예:
   python train.py --config debug_30m
-  python train.py --config base_400m --resume checkpoints/base_400m/latest.pt
+  python train.py --config base_1b --resume checkpoints/base_1b/latest.pt
 """
 
 import argparse

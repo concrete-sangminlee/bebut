@@ -1,6 +1,6 @@
 """합성 데이터로 학습 처리량 측정 — 실제 학습 전 소요 시간 추정용.
 
-사용: python bench.py --config base_400m [--compile]
+사용: python bench.py --config base_1b [--compile]
 """
 
 import argparse

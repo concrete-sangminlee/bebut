@@ -34,3 +34,8 @@ step  19200 (20.1B tokens) | ppl  17.02 | COPA 62.7% BoolQ 56.7% HellaSwag 46.7%
 
 결과: checkpoints/base_1b/milestones.csv
 무작위 기준: COPA 50% / BoolQ 50% / HellaSwag 25%
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+step  20000 (21.0B tokens) | ppl  14.68 | COPA 62.7% BoolQ 56.7% HellaSwag 38.7% | 1347초
+
+결과: checkpoints/base_1b/milestones.csv
+무작위 기준: COPA 50% / BoolQ 50% / HellaSwag 25%
