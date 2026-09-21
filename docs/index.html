@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bebut — 한국어 1.2B LLM을 밑바닥부터</title>
+<meta name="description" content="토크나이저부터 직접 만들어 한국어 1.2B 대화 모델을 완성한 기록. transformers 없이 순수 PyTorch로 구현, GPU 한 장에서 25.2B 토큰 학습.">
+<style>
+  :root {
+    --bg: #0b0d10;
+    --bg-elevated: #14171c;
+    --border: #262b33;
+    --text: #e7e9ec;
+    --text-dim: #9aa2ad;
+    --accent: #6ee7b7;
+    --accent-2: #7dd3fc;
+    --danger: #f2a0a0;
+    --code-bg: #10131700;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f7f8fa;
+      --bg-elevated: #ffffff;
+      --border: #e2e5ea;
+      --text: #16181c;
+      --text-dim: #5b6270;
+      --accent: #0f9d6c;
+      --accent-2: #0284c7;
+      --danger: #c0392b;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f7f8fa;
+    --bg-elevated: #ffffff;
+    --border: #e2e5ea;
+    --text: #16181c;
+    --text-dim: #5b6270;
+    --accent: #0f9d6c;
+    --accent-2: #0284c7;
+    --danger: #c0392b;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+  header.hero {
+    padding: 64px 0 40px;
+    border-bottom: 1px solid var(--border);
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 14px;
+  }
+  h1 {
+    font-size: clamp(28px, 5vw, 42px);
+    line-height: 1.25;
+    margin: 0 0 16px;
+    letter-spacing: -0.01em;
+  }
+  .lede {
+    font-size: 17px;
+    color: var(--text-dim);
+    max-width: 640px;
+    margin: 0 0 28px;
+  }
+  .lede strong { color: var(--text); }
+
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .badges img { display: block; height: 20px; }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+  }
+  .btn.primary {
+    background: var(--accent);
+    color: #06120c;
+    border-color: transparent;
+  }
+  .btn.primary:hover { text-decoration: none; filter: brightness(1.08); }
+  .btn.secondary { color: var(--text); background: var(--bg-elevated); }
+  .btn.secondary:hover { text-decoration: none; border-color: var(--accent-2); }
+
+  section { padding: 48px 0; border-bottom: 1px solid var(--border); }
+  section:last-of-type { border-bottom: none; }
+
+  h2 {
+    font-size: 22px;
+    margin: 0 0 20px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  h2 .num { font-family: var(--mono); color: var(--text-dim); font-size: 15px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  td strong { color: var(--accent); }
+  .spec-table td:first-child { color: var(--text-dim); width: 32%; }
+
+  .table-scroll { overflow-x: auto; }
+
+  figure { margin: 24px 0 0; }
+  figure img { width: 100%; border-radius: 10px; border: 1px solid var(--border); display: block; }
+  figcaption { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
+
+  .chat {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 20px;
+    font-size: 14.5px;
+  }
+  .chat .turn { padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .chat .turn:last-child { border-bottom: none; }
+  .chat .q { color: var(--text-dim); font-family: var(--mono); font-size: 13px; margin-bottom: 6px; }
+  .chat .a { }
+  .chat .note { color: var(--accent-2); font-size: 13px; margin-top: 6px; }
+  .chat .note.bad { color: var(--danger); }
+
+  ul.built { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  ul.built li {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  ul.built code { font-family: var(--mono); font-size: 12.5px; color: var(--accent-2); }
+  ul.built strong { display: block; margin-bottom: 4px; }
+
+  ul.limits { padding-left: 20px; }
+  ul.limits li { margin-bottom: 8px; }
+
+  pre {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    font-family: var(--mono);
+  }
+
+  footer {
+    padding: 40px 0 64px;
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+  footer a { color: var(--text-dim); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="eyebrow">bebut · from-scratch korean llm</div>
+      <h1>한국어 1.2B LLM을<br>밑바닥부터 학습했습니다</h1>
+      <p class="lede">
+        토크나이저부터 직접 만들어 <strong>한국어 1.2B 대화 모델</strong>을 완성한 기록입니다.
+        <code>transformers</code> 없이 순수 PyTorch로 구현했고, GPU 한 장(RTX 6000 Ada 48GB)에서
+        <strong>25.2B 토큰</strong>을 학습한 뒤 SFT까지 마쳤습니다.
+      </p>
+      <div class="badges">
+        <img src="https://github.com/concrete-sangminlee/bebut/actions/workflows/ci.yml/badge.svg" alt="CI status">
+        <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License">
+        <img src="https://img.shields.io/badge/python-3.13-blue.svg" alt="Python 3.13">
+        <img src="https://img.shields.io/badge/PyTorch-2.6%2B-ee4c2c.svg" alt="PyTorch 2.6+">
+      </div>
+      <div class="cta-row">
+        <a class="btn primary" href="https://github.com/concrete-sangminlee/bebut">GitHub 저장소</a>
+        <a class="btn secondary" href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>
+        <a class="btn secondary" href="https://github.com/concrete-sangminlee/bebut#전체-재현-절차">재현 절차</a>
+      </div>
+    </header>
+
+    <section>
+      <h2><span class="num">01</span> 모델 스펙</h2>
+      <table class="spec-table">
+        <tr><td>모델</td><td>decoder-only 1.2B (dim 2048 / 24층 / GQA 16:4 / ctx 2048)</td></tr>
+        <tr><td>토크나이저</td><td>byte-level BPE 64K, 한국어 코퍼스로 직접 학습</td></tr>
+        <tr><td>사전학습</td><td>25.2B 토큰 (24,000 step, RTX 6000 Ada ×1, 약 6주)</td></tr>
+        <tr><td>정렬</td><td>SFT (KoAlpaca + KULLM v2, 2 epoch)</td></tr>
+        <tr><td>최종 체크포인트</td><td><code>checkpoints/sft_1b/latest.pt</code></td></tr>
+      </table>
+      <figure>
+        <img src="training_curves.png" alt="사전학습 손실 및 학습률 곡선">
+        <figcaption>사전학습 전체 과정의 loss / learning rate 곡선</figcaption>
+      </figure>
+    </section>
+
+    <section>
+      <h2><span class="num">02</span> 결과 요약</h2>
+      <p style="color:var(--text-dim); font-size:14px; margin-top:-8px;">사전학습 — 1.2B vs 같은 코드로 학습한 125M</p>
+      <div class="table-scroll">
+        <table>
+          <tr><th></th><th>125M (2.6B 토큰)</th><th>1.2B (25.2B 토큰)</th><th>무작위</th></tr>
+          <tr><td>held-out perplexity</td><td>34.0</td><td><strong>13.87</strong></td><td>—</td></tr>
+          <tr><td>KOBEST COPA</td><td>48.3%</td><td><strong>67.1%</strong></td><td>50%</td></tr>
+          <tr><td>KOBEST HellaSwag</td><td>28.3%</td><td><strong>40.0%</strong></td><td>25%</td></tr>
+          <tr><td>KOBEST BoolQ</td><td>49.3%</td><td>50.0%</td><td>50%</td></tr>
+        </table>
+      </div>
+
+      <p style="color:var(--text-dim); font-size:14px; margin: 28px 0 -8px;">
+        SFT 후 — 학습 데이터와 겹치지 않는 자체 문항 36개 + KOBEST 전체
+      </p>
+      <div class="table-scroll">
+        <table>
+          <tr><th></th><th>대화 정답률</th><th>스스로 멈춤</th><th>반복 루프</th><th>COPA</th><th>HellaSwag</th></tr>
+          <tr><td>베이스</td><td>71.0%</td><td>92%</td><td>11%</td><td>67.1%</td><td>40.0%</td></tr>
+          <tr><td>SFT 에폭0</td><td>67.7%</td><td>100%</td><td>3%</td><td>66.9%</td><td>40.8%</td></tr>
+          <tr><td><strong>SFT 최종</strong></td><td><strong>74.2%</strong></td><td>97%</td><td>8%</td><td>66.4%</td><td>40.8%</td></tr>
+        </table>
+      </div>
+      <p style="color:var(--text-dim); font-size:14px;">
+        유형별로는 <strong style="color:var(--text)">사실 100%, 지시 50%, 계산 0%</strong>입니다.
+        자세한 수치와 해석은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>, 모델별 답변 전문은
+        <a href="https://github.com/concrete-sangminlee/bebut/blob/main/logs/sft_eval_answers.md">sft_eval_answers.md</a>에 있습니다.
+      </p>
+
+      <div class="chat">
+        <div class="turn">
+          <div class="q">Q: 조선을 건국한 사람은 누구야?</div>
+          <div class="a">A: 조선은 이성계라는 인물이 건국한 나라입니다. 이성계는 고려 말기의 권문세족으로, 이성계의 아버지 이자춘은 공민왕, 이성계의 형인 이원계는 우왕, ...</div>
+          <div class="note">→ 핵심(이성계)은 맞히지만 세부는 그럴듯하게 지어냅니다</div>
+        </div>
+        <div class="turn">
+          <div class="q">Q: 'Good morning'을 한국어로 번역해줘.</div>
+          <div class="a">A: "굿모닝"은 "좋은 아침"으로 번역할 수 있습니다.</div>
+        </div>
+        <div class="turn">
+          <div class="q">Q: 6 곱하기 7은 얼마야?</div>
+          <div class="a">A: 6 곱하기 7의 결과는 28입니다.</div>
+          <div class="note bad">→ 계산은 전혀 못 합니다</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2><span class="num">03</span> 무엇을 직접 만들었나</h2>
+      <p style="color:var(--text-dim); font-size:14px; margin-top:-8px;">
+        <code>datasets</code>(코퍼스 다운로드)와 PyTorch(행렬 연산·자동미분)를 빼면 전부 이 저장소 안에 있습니다.
+      </p>
+      <ul class="built">
+        <li>
+          <strong>BPE 토크나이저</strong>
+          증분 쌍 빈도 갱신 + inverted index + lazy-deletion heap으로 500MB 코퍼스에서 64K vocab을 18.6분에 학습
+          — <code>tokenizer/bpe.py</code>
+        </li>
+        <li>
+          <strong>트랜스포머</strong>
+          RMSNorm · RoPE · GQA · QK-Norm · SwiGLU · embedding tying. 교육용 명시적 attention과 FlashAttention 경로를 모두 두고 단위테스트로 일치 검증
+          — <code>model.py</code>
+        </li>
+        <li>
+          <strong>청크 cross-entropy</strong>
+          64K vocab에서 logits만 8.6GB가 되는 문제를 gradient checkpointing으로 해결
+          — <code>model.py</code>의 <code>chunked_cross_entropy</code>
+        </li>
+        <li>
+          <strong>데이터 파이프라인</strong>
+          스트리밍 다운로드 → 품질 필터 → MinHash 중복제거 → 토크나이즈 → shard
+          — <code>data/</code>
+        </li>
+        <li>
+          <strong>품질 분류기</strong>
+          위키·교과서를 positive, 원본 웹을 negative로 학습한 해시 특징 로지스틱 회귀(numpy 직접 구현), held-out 정확도 98.3%
+          — <code>data/quality.py</code>
+        </li>
+        <li>
+          <strong>학습 루프</strong>
+          WSD 스케줄, bf16, torch.compile, gradient accumulation, 원자적 체크포인트, 완전 재개
+          — <code>train.py</code>
+        </li>
+        <li>
+          <strong>평가</strong>
+          perplexity, KOBEST(비조건부 정규화 + 예측 쏠림 감지), 오염 검사
+          — <code>eval.py</code>, <code>evals/</code>
+        </li>
+      </ul>
+    </section>
+
+    <section>
+      <h2><span class="num">04</span> 하드웨어와 비용</h2>
+      <p>
+        RTX 6000 Ada 48GB <strong>한 장</strong>으로 전부 했습니다. 벤치마크로 고른 설정은
+        마이크로배치 2 × 2048토큰(26GB)이며, 처리량은 11K tok/s였습니다.
+      </p>
+      <p style="color:var(--text-dim);">
+        배치를 4로 키우면 34.7K tok/s가 나왔지만 VRAM이 34.7GB로 늘어, 같은 GPU를 쓰는
+        다른 작업(vLLM 등)이 뜰 때마다 OOM으로 죽었습니다. 공유 자원에서는 최적값보다
+        완주 가능성이 중요하다는 판단으로 배치 2를 택했고, 결과적으로 실제 처리량도 더 좋았습니다.
+      </p>
+    </section>
+
+    <section>
+      <h2><span class="num">05</span> 한계</h2>
+      <ul class="limits">
+        <li><strong>계산 불가</strong> — 12+7을 14라고 답합니다. 이 규모·데이터로는 개선되지 않습니다.</li>
+        <li><strong>드문 사실은 지어냅니다</strong> — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.</li>
+        <li><strong>BoolQ 실패</strong> — 전 구간에서 예측이 한쪽으로 쏠려 무작위 수준입니다.</li>
+        <li><strong>annealing의 부작용</strong> — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만 HellaSwag은 46.2% → 40.0%로 떨어졌습니다.</li>
+        <li><strong>SFT 데이터 오염</strong> — annealing에 SFT와 같은 데이터를 넣어 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.</li>
+      </ul>
+      <p>자세한 내용과 과정에서 배운 것은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>에 정리했습니다.</p>
+    </section>
+
+    <section>
+      <h2><span class="num">06</span> 직접 재현하기</h2>
+      <pre>python3.13 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# 구현 검증 (GPU 불필요, 1분)
+python -m tokenizer.test_bpe
+python test_model.py
+
+# 사전학습 (RTX 6000 Ada 1장 기준 약 6주)
+./run_training.sh base_1b data/shards_26b
+
+# SFT + 대화
+python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
+python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat</pre>
+      <p style="font-size:14px; color:var(--text-dim);">
+        전체 절차는 <a href="https://github.com/concrete-sangminlee/bebut#전체-재현-절차">README</a>,
+        운영·재개·모니터링은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/OPERATIONS.md">OPERATIONS.md</a>에 있습니다.
+      </p>
+    </section>
+
+    <footer>
+      <p>MIT License · <a href="https://github.com/concrete-sangminlee/bebut">github.com/concrete-sangminlee/bebut</a></p>
+    </footer>
+  </div>
+</body>
+</html>

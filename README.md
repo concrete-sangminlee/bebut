@@ -1,5 +1,13 @@
 # bebut — 한국어 1.2B LLM을 밑바닥부터
 
+[![CI](https://github.com/concrete-sangminlee/bebut/actions/workflows/ci.yml/badge.svg)](https://github.com/concrete-sangminlee/bebut/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.6%2B-ee4c2c.svg)](https://pytorch.org/)
+[![Language: Korean](https://img.shields.io/badge/language-Korean-brightgreen.svg)](README.md)
+
+**[🔗 사이트에서 보기](https://concrete-sangminlee.github.io/bebut/)**
+
 토크나이저부터 직접 만들어 **한국어 1.2B 대화 모델**을 완성한 기록입니다.
 `transformers` 없이 순수 PyTorch로 구현했고, GPU 한 장(RTX 6000 Ada 48GB)에서
 **25.2B 토큰**을 학습한 뒤 SFT까지 마쳤습니다.
