@@ -5,29 +5,27 @@
    있는 것이라 채점에서 빼고 따로 보고한다 — 안 본 문제와의 차이가 기억 효과다.
    정상 종료율(<|im_end|>로 스스로 멈췄는가)과 반복률도 잰다.
 2) KOBEST 전체 문항 (사전학습 최종 평가와 같은 2-shot 형식) — SFT가 기존 능력을 깎았는지 본다.
+   acc_calib(기본 지표)·acc·acc_len을 모두 기록한다.
 
-사용: python sft_eval.py  →  logs/sft_eval.json, logs/sft_eval_answers.md
+사용:
+  python sft_eval.py                                   # 기본 세 모델 → logs/sft_eval.json
+  python sft_eval.py --models 최종=checkpoints/sft_1b/latest.pt --repetition-penalty 1.1
+  python sft_eval.py --skip-kobest                     # 대화 평가만 (빠름)
 """
+import argparse
 import json
 import re
 import time
 
 import torch
 
-import configs.base_1b as conf
-from eval import FORMATTERS, eval_kobest
-from model import GPT
-from tokenizer.bpe import ByteBPETokenizer
+from chat import encode_prompt
+from eval import FORMATTERS, kobest_details
+from sample import load_model, pick_device
 
-DEV = "cuda"
-MODELS = [("베이스", "checkpoints/base_1b/latest.pt"),
-          ("SFT 에폭0", "checkpoints/sft_1b/epoch0.pt"),
-          ("SFT 최종", "checkpoints/sft_1b/latest.pt")]
-MAX_NEW = 150
-
-tok = ByteBPETokenizer.load("tokenizer/tokenizer.json")
-END = tok.special_tokens["<|im_end|>"]
-QS = json.load(open("evals/heldout_ko.json"))
+DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
+                  "SFT 에폭0=checkpoints/sft_1b/epoch0.pt",
+                  "SFT 최종=checkpoints/sft_1b/latest.pt"]
 
 
 def correct(ans, keys):
@@ -52,25 +50,17 @@ def repetitive(ans):
     return False
 
 
-results, answers_md = {}, ["# SFT 평가 — 모델별 답변\n"]
-for label, path in MODELS:
-    t0 = time.time()
-    ck = torch.load(path, map_location="cpu", weights_only=False)
-    model = GPT(conf.model)
-    model.load_state_dict(ck["model"])
-    del ck
-    model = model.to(DEV).eval()
-    print(f"\n===== {label} =====", flush=True)
-    answers_md.append(f"\n## {label}\n")
-
+def chat_eval(model, tok, questions, max_new, repetition_penalty=1.0):
+    end = tok.special_tokens["<|im_end|>"]
+    device = model.tok_emb.weight.device
     by_type, stopped, rep, rows = {}, 0, 0, []
-    for q in QS:
-        prompt = f"<|im_start|>user\n{q['q']}<|im_end|>\n<|im_start|>assistant\n"
-        ids = tok.encode(prompt, allowed_special=True)
-        out = model.generate(torch.tensor([ids], device=DEV), MAX_NEW, temperature=0.0, eos_id=END)
+    for q in questions:
+        ids = encode_prompt(tok, [{"role": "user", "content": q["q"]}])
+        out = model.generate(torch.tensor([ids], device=device), max_new, temperature=0.0,
+                             eos_id=end, repetition_penalty=repetition_penalty)
         gen = out[0, len(ids):].tolist()
-        ended = END in gen
-        ans = tok.decode([t for t in gen if t != END]).strip()
+        ended = end in gen
+        ans = tok.decode([t for t in gen if t != end]).strip()
         stopped += ended
         r = repetitive(ans)
         rep += r
@@ -79,28 +69,64 @@ for label, path in MODELS:
             by_type.setdefault(q["type"], []).append(ok)
         rows.append({"type": q["type"], "q": q["q"], "answer": ans, "correct": ok,
                      "stopped": ended, "repetitive": r})
-        mark = "" if ok is None else ("O " if ok else "X ")
-        answers_md.append(f"- **[{q['type']}] {q['q']}** {mark}\n  > {ans[:300].replace(chr(10), ' ')}\n")
-
     acc = {t: round(100 * sum(v) / len(v), 1) for t, v in by_type.items()}
     held = [ok for t, v in by_type.items() if t != "오염대조" for ok in v]
-    r = {"heldout_acc": round(100 * sum(held) / len(held), 1), "by_type": acc,
-         "stop_rate": round(100 * stopped / len(QS), 1), "repeat_rate": round(100 * rep / len(QS), 1),
-         "kobest": {}, "answers": rows}
-    print(f"  대화 정답률(비오염) {r['heldout_acc']}% | 유형별 {acc}", flush=True)
-    print(f"  스스로 멈춤 {r['stop_rate']}% | 반복 루프 {r['repeat_rate']}%", flush=True)
+    return {"heldout_acc": round(100 * sum(held) / max(1, len(held)), 1), "by_type": acc,
+            "stop_rate": round(100 * stopped / len(questions), 1),
+            "repeat_rate": round(100 * rep / len(questions), 1), "answers": rows}
 
-    for task in FORMATTERS:
-        a, n, preds = eval_kobest(model, tok, task, 2, DEV, None)
-        r["kobest"][task] = {"acc": round(a * 100, 1), "n": n,
-                             "preds": {str(k): v for k, v in sorted(preds.items())}}
-        print(f"  {task:<10} {a*100:5.1f}% (n={n}) 예측분포 {dict(sorted(preds.items()))}", flush=True)
 
-    r["seconds"] = round(time.time() - t0)
-    results[label] = r
-    del model
-    torch.cuda.empty_cache()
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--models", nargs="+", default=DEFAULT_MODELS, help="라벨=체크포인트 경로")
+    ap.add_argument("--questions", default="evals/heldout_ko.json")
+    ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
+    ap.add_argument("--max-new", type=int, default=150)
+    ap.add_argument("--repetition-penalty", type=float, default=1.0)
+    ap.add_argument("--shots", type=int, default=2)
+    ap.add_argument("--skip-kobest", action="store_true")
+    ap.add_argument("--device", default="auto")
+    ap.add_argument("--out", default="logs/sft_eval.json")
+    ap.add_argument("--answers-out", default="logs/sft_eval_answers.md")
+    args = ap.parse_args()
 
-json.dump(results, open("logs/sft_eval.json", "w"), ensure_ascii=False, indent=2)
-open("logs/sft_eval_answers.md", "w").write("\n".join(answers_md))
-print("\n저장: logs/sft_eval.json, logs/sft_eval_answers.md", flush=True)
+    device = pick_device(args.device)
+    questions = json.load(open(args.questions, encoding="utf-8"))
+    results, answers_md = {}, ["# SFT 평가 — 모델별 답변\n"]
+    for spec in args.models:
+        label, path = spec.split("=", 1)
+        t0 = time.time()
+        # 채점이 dtype에 흔들리지 않게 fp32로 잰다 (예전 평가와 같은 조건)
+        model, tok = load_model(path, args.tokenizer, device, torch.float32)
+        print(f"\n===== {label} ({path}) =====", flush=True)
+        r = chat_eval(model, tok, questions, args.max_new, args.repetition_penalty)
+        print(f"  대화 정답률(비오염) {r['heldout_acc']}% | 유형별 {r['by_type']}", flush=True)
+        print(f"  스스로 멈춤 {r['stop_rate']}% | 반복 루프 {r['repeat_rate']}%", flush=True)
+        answers_md.append(f"\n## {label}\n")
+        for row in r["answers"]:
+            mark = "" if row["correct"] is None else ("O " if row["correct"] else "X ")
+            answers_md.append(f"- **[{row['type']}] {row['q']}** {mark}\n"
+                              f"  > {row['answer'][:300].replace(chr(10), ' ')}\n")
+
+        r["kobest"] = {}
+        if not args.skip_kobest:
+            for task in FORMATTERS:
+                k = kobest_details(model, tok, task, args.shots, device)
+                r["kobest"][task] = k
+                print(f"  {task:<10} calib {k['acc_calib']*100:5.1f}% | raw {k['acc']*100:5.1f}% "
+                      f"| len {k['acc_len']*100:5.1f}% (n={k['n']}) "
+                      f"예측분포 {k['preds']['acc_calib']}", flush=True)
+
+        r["seconds"] = round(time.time() - t0)
+        results[label] = r
+        del model
+        if device == "cuda":
+            torch.cuda.empty_cache()
+
+    json.dump(results, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    open(args.answers_out, "w", encoding="utf-8").write("\n".join(answers_md))
+    print(f"\n저장: {args.out}, {args.answers_out}", flush=True)
+
+
+if __name__ == "__main__":
+    main()
