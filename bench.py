@@ -35,17 +35,21 @@ def main():
     x = torch.randint(0, mcfg.vocab_size, (B, T), device=device)
     y = torch.randint(0, mcfg.vocab_size, (B, T), device=device)
 
+    def sync():  # CPU에선 torch.cuda.synchronize()가 오류를 낸다
+        if device == "cuda":
+            torch.cuda.synchronize()
+
     model.train()
     for i in range(args.steps):
         if i == 2:  # 워밍업/컴파일 제외
-            torch.cuda.synchronize()
+            sync()
             t0 = time.time()
         with torch.autocast(device_type=device, dtype=torch.bfloat16):
             _, loss = model(x, y, loss_chunk=tcfg.get("loss_chunk"))
         loss.backward()
         opt.step()
         opt.zero_grad(set_to_none=True)
-    torch.cuda.synchronize()
+    sync()
     dt = time.time() - t0
 
     n = args.steps - 2
@@ -56,7 +60,8 @@ def main():
     print(f"최적화 step당 {step_tok/1e6:.2f}M tokens, {step_tok/tps:.1f}초")
     print(f"설정된 {tcfg['max_steps']} steps = {step_tok*tcfg['max_steps']/1e9:.1f}B tokens, "
           f"{step_tok*tcfg['max_steps']/tps/3600:.1f}시간 ({step_tok*tcfg['max_steps']/tps/86400:.1f}일)")
-    print(f"VRAM: {torch.cuda.max_memory_allocated()/1e9:.1f}GB")
+    if device == "cuda":
+        print(f"VRAM: {torch.cuda.max_memory_allocated()/1e9:.1f}GB")
 
 
 if __name__ == "__main__":
