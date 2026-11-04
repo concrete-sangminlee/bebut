@@ -270,6 +270,8 @@ def sample_next(logits, temperature=0.8, top_p=1.0, top_k=0, min_p=0.0, generato
     if min_p > 0:
         floor = probs.max(-1, keepdim=True).values * min_p
         probs = probs.masked_fill(probs < floor, 0.0)
+        # 다시 정규화해야 top-p의 누적합이 남은 후보 기준이 된다 (HF와 같은 순서·의미)
+        probs = probs / probs.sum(-1, keepdim=True)
     # nucleus (top-p) 샘플링: 누적 확률이 top_p를 넘기 직전까지만 남긴다
     sorted_p, sorted_idx = probs.sort(descending=True)
     if top_p < 1.0:
@@ -372,6 +374,10 @@ class GPT(nn.Module):
         if repetition_penalty != 1.0:
             seen = torch.zeros(B, self.cfg.vocab_size, dtype=torch.bool, device=idx.device)
             seen.scatter_(1, idx, True)
+            # 종료 토큰은 벌점에서 뺀다. 대화 프롬프트엔 <|im_end|>가 항상 들어 있어서,
+            # 빼지 않으면 첫 토큰부터 '멈추기'가 억제돼 답이 늘어진다.
+            if stop is not None:
+                seen[:, stop] = False
         done = torch.zeros(B, dtype=torch.bool, device=idx.device)
 
         cache = KVCache(len(self.blocks), T + n_new)
@@ -388,6 +394,8 @@ class GPT(nn.Module):
                 return
             if seen is not None:
                 seen.scatter_(1, nxt, True)
+                if stop is not None:
+                    seen[:, stop] = False
             logits = self._step(nxt, cache, explicit)
 
     @torch.no_grad()

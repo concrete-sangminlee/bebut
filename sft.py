@@ -49,6 +49,16 @@ def example_from_messages(tok, messages, max_len):
     return ids, mask
 
 
+def _instruction_row(instruction, inp, output):
+    """예전 build_examples와 같은 채택 규칙: 결합한 user 문자열과 답이 비어 있지 않으면 쓴다.
+
+    instruction이 비어도 input이 있으면 user = "\n\n" + input으로 남는다. 이 규칙이
+    바뀌면 예제 수가 달라져 Random(42) 셔플 결과, 곧 train/val 분할 전체가 달라진다.
+    """
+    msgs = instruction_to_messages(instruction or "", output or "", inp)
+    return msgs if msgs[0]["content"] and output else None
+
+
 def iter_conversations(data_path=None, limit=None):
     """messages 목록을 차례로 내놓는다. data_path가 없으면 기본 HF 데이터셋."""
     if data_path:
@@ -59,8 +69,10 @@ def iter_conversations(data_path=None, limit=None):
                 row = json.loads(line)
                 if "messages" in row:
                     yield row["messages"]
-                elif row.get("instruction") and row.get("output"):
-                    yield instruction_to_messages(row["instruction"], row["output"], row.get("input"))
+                else:
+                    msgs = _instruction_row(row.get("instruction"), row.get("input"), row.get("output"))
+                    if msgs:
+                        yield msgs
         return
 
     from datasets import load_dataset
@@ -71,9 +83,9 @@ def iter_conversations(data_path=None, limit=None):
             ds = ds.select(range(min(limit, len(ds))))
         print(f"[{name}] {len(ds)}개 예제")
         for row in ds:
-            if row[f_inst] and row[f_out]:
-                yield instruction_to_messages(row[f_inst], row[f_out],
-                                              row.get(f_input) if f_input else None)
+            msgs = _instruction_row(row[f_inst], row.get(f_input) if f_input else None, row[f_out])
+            if msgs:
+                yield msgs
 
 
 def build_examples(tok, max_len, limit=None, data_path=None):
