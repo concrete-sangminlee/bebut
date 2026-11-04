@@ -4,7 +4,7 @@
 마이크로배치 4 × 최대 1024토큰이면 사전학습(2 × 2048)과 같은 토큰 수라 26GB 안팎.
 """
 
-from configs.base_1b import model  # 아키텍처는 동일
+from configs.base_1b import model  # noqa: F401 — 아키텍처는 동일
 
 train = dict(
     batch_size=4,

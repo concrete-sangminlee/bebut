@@ -176,6 +176,16 @@
     font-family: var(--mono);
   }
 
+  .callout {
+    border: 1px solid var(--danger);
+    border-left-width: 4px;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 0 0 24px;
+    font-size: 14px;
+    background: var(--bg-elevated);
+  }
+  .callout strong { color: var(--danger); }
   footer {
     padding: 40px 0 64px;
     color: var(--text-dim);
@@ -224,14 +234,22 @@
 
     <section>
       <h2><span class="num">02</span> 결과 요약</h2>
+      <div class="callout">
+        <strong>KOBEST 수치 정정 필요 (2026-11)</strong> — 아래 KOBEST 점수(†)는 선택지의 첫 토큰을
+        채점에서 빠뜨리는 버그가 있는 채점기로 측정했습니다. 문맥 끝 공백(<code>"답: "</code>)이 선택지 첫 단어에
+        붙어 토큰화되는 걸 놓쳤고, 그 결과 BoolQ의 <code>"예"</code>는 채점 토큰이 0개였습니다 — BoolQ는 모델을
+        측정한 적이 없습니다. 버그는 고쳤고 재측정 예정입니다.
+        perplexity와 대화 평가는 영향이 없습니다.
+        <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md#0-채점-버그-정정-2026-11">경위 보기</a>
+      </div>
       <p style="color:var(--text-dim); font-size:14px; margin-top:-8px;">사전학습 — 1.2B vs 같은 코드로 학습한 125M</p>
       <div class="table-scroll">
         <table>
           <tr><th></th><th>125M (2.6B 토큰)</th><th>1.2B (25.2B 토큰)</th><th>무작위</th></tr>
           <tr><td>held-out perplexity</td><td>34.0</td><td><strong>13.87</strong></td><td>—</td></tr>
-          <tr><td>KOBEST COPA</td><td>48.3%</td><td><strong>67.1%</strong></td><td>50%</td></tr>
-          <tr><td>KOBEST HellaSwag</td><td>28.3%</td><td><strong>40.0%</strong></td><td>25%</td></tr>
-          <tr><td>KOBEST BoolQ</td><td>49.3%</td><td>50.0%</td><td>50%</td></tr>
+          <tr><td>KOBEST COPA †</td><td>48.3%</td><td><strong>67.1%</strong></td><td>50%</td></tr>
+          <tr><td>KOBEST HellaSwag †</td><td>28.3%</td><td><strong>40.0%</strong></td><td>25%</td></tr>
+          <tr><td>KOBEST BoolQ †</td><td>49.3%</td><td>50.0%</td><td>50%</td></tr>
         </table>
       </div>
 
@@ -240,7 +258,7 @@
       </p>
       <div class="table-scroll">
         <table>
-          <tr><th></th><th>대화 정답률</th><th>스스로 멈춤</th><th>반복 루프</th><th>COPA</th><th>HellaSwag</th></tr>
+          <tr><th></th><th>대화 정답률</th><th>스스로 멈춤</th><th>반복 루프</th><th>COPA †</th><th>HellaSwag †</th></tr>
           <tr><td>베이스</td><td>71.0%</td><td>92%</td><td>11%</td><td>67.1%</td><td>40.0%</td></tr>
           <tr><td>SFT 에폭0</td><td>67.7%</td><td>100%</td><td>3%</td><td>66.9%</td><td>40.8%</td></tr>
           <tr><td><strong>SFT 최종</strong></td><td><strong>74.2%</strong></td><td>97%</td><td>8%</td><td>66.4%</td><td>40.8%</td></tr>
@@ -271,7 +289,24 @@
     </section>
 
     <section>
-      <h2><span class="num">03</span> 무엇을 직접 만들었나</h2>
+      <h2><span class="num">03</span> 모델 쓰기</h2>
+      <pre># 터미널 대화 (스트리밍, 긴 대화는 오래된 턴부터 잘라 넣음)
+python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat --repetition-penalty 1.1
+
+# OpenAI 호환 API 서버 + 웹 채팅 UI → http://127.0.0.1:8000
+python serve.py --ckpt checkpoints/sft_1b/latest.pt
+
+# HuggingFace(Qwen3 호환) 형식 → transformers · vLLM · llama.cpp
+python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft</pre>
+      <p style="color:var(--text-dim); font-size:14px;">
+        API 서버는 표준 라이브러리만으로 <code>/v1/chat/completions</code>(SSE 스트리밍)·<code>/v1/completions</code>·<code>/v1/models</code>를
+        제공해 openai SDK, LangChain, Open WebUI가 <code>base_url</code>만 바꿔 붙습니다.
+        HF 내보내기는 구성이 Qwen3와 같다는 점을 이용해 RoPE 차원 순서만 재배열하며, transformers로 읽어 logits·토크나이저 일치를 CI에서 검증합니다.
+      </p>
+    </section>
+
+    <section>
+      <h2><span class="num">04</span> 무엇을 직접 만들었나</h2>
       <p style="color:var(--text-dim); font-size:14px; margin-top:-8px;">
         <code>datasets</code>(코퍼스 다운로드)와 PyTorch(행렬 연산·자동미분)를 빼면 전부 이 저장소 안에 있습니다.
       </p>
@@ -315,7 +350,7 @@
     </section>
 
     <section>
-      <h2><span class="num">04</span> 하드웨어와 비용</h2>
+      <h2><span class="num">05</span> 하드웨어와 비용</h2>
       <p>
         RTX 6000 Ada 48GB <strong>한 장</strong>으로 전부 했습니다. 벤치마크로 고른 설정은
         마이크로배치 2 × 2048토큰(26GB)이며, 처리량은 11K tok/s였습니다.
@@ -328,25 +363,26 @@
     </section>
 
     <section>
-      <h2><span class="num">05</span> 한계</h2>
+      <h2><span class="num">06</span> 한계</h2>
       <ul class="limits">
         <li><strong>계산 불가</strong> — 12+7을 14라고 답합니다. 이 규모·데이터로는 개선되지 않습니다.</li>
         <li><strong>드문 사실은 지어냅니다</strong> — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.</li>
-        <li><strong>BoolQ 실패</strong> — 전 구간에서 예측이 한쪽으로 쏠려 무작위 수준입니다.</li>
-        <li><strong>annealing의 부작용</strong> — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만 HellaSwag은 46.2% → 40.0%로 떨어졌습니다.</li>
+        <li><strong>BoolQ는 미확인</strong> — 한쪽으로 쏠린 무작위 수준으로 기록했지만 채점 버그로 설명됩니다. 재측정이 필요합니다.</li>
+        <li><strong>annealing의 부작용(재확인 필요)</strong> — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만 HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 이 비교도 버그 있는 채점기로 잰 값입니다.</li>
         <li><strong>SFT 데이터 오염</strong> — annealing에 SFT와 같은 데이터를 넣어 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.</li>
       </ul>
       <p>자세한 내용과 과정에서 배운 것은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>에 정리했습니다.</p>
     </section>
 
     <section>
-      <h2><span class="num">06</span> 직접 재현하기</h2>
+      <h2><span class="num">07</span> 직접 재현하기</h2>
       <pre>python3.13 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # 구현 검증 (GPU 불필요, 1분)
 python -m tokenizer.test_bpe
 python test_model.py
+python -m pytest
 
 # 사전학습 (RTX 6000 Ada 1장 기준 약 6주)
 ./run_training.sh base_1b data/shards_26b

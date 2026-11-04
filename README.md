@@ -24,22 +24,33 @@
 
 ## 결과 요약
 
+> **⚠️ KOBEST 수치 정정 필요 (2026-11).** 아래 KOBEST 점수(†)는 **선택지의 첫 토큰을
+> 채점에서 빠뜨리는 버그**가 있는 채점기로 측정했습니다. 문맥 끝 공백(`"답: "`)이 선택지
+> 첫 단어에 붙어 토큰화되는데(`" 예"`), 경계를 문맥만 따로 토큰화한 길이로 잡았기 때문입니다.
+> 특히 **BoolQ는 모델을 측정한 적이 없습니다** — `"예"`는 채점 토큰이 0개였습니다.
+> 버그는 고쳤고(회귀 테스트 포함) 재측정은 체크포인트가 있는 서버에서
+> `python final_eval.py`, `python sft_eval.py`로 합니다.
+> 경위와 영향은 [docs/RESULTS.md §0](docs/RESULTS.md#0-채점-버그-정정-2026-11)에 있습니다.
+> perplexity와 대화 평가는 이 버그와 무관합니다.
+
 **사전학습 (1.2B vs 같은 코드로 학습한 125M)**
 
 | | 125M (2.6B 토큰) | **1.2B (25.2B 토큰)** | 무작위 |
 |---|---|---|---|
 | held-out perplexity | 34.0 | **13.87** | — |
-| KOBEST COPA | 48.3% | **67.1%** | 50% |
-| KOBEST HellaSwag | 28.3% | **40.0%** | 25% |
-| KOBEST BoolQ | 49.3% | 50.0% | 50% |
+| KOBEST COPA † | 48.3% | **67.1%** | 50% |
+| KOBEST HellaSwag † | 28.3% | **40.0%** | 25% |
+| KOBEST BoolQ † | 49.3% | 50.0% | 50% |
 
 **SFT 후 (학습 데이터와 겹치지 않는 자체 문항 36개 + KOBEST 전체)**
 
-| | 대화 정답률 | 스스로 멈춤 | 반복 루프 | COPA | HellaSwag |
+| | 대화 정답률 | 스스로 멈춤 | 반복 루프 | COPA † | HellaSwag † |
 |---|---|---|---|---|---|
 | 베이스 | 71.0% | 92% | 11% | 67.1% | 40.0% |
 | SFT 에폭0 | 67.7% | 100% | 3% | 66.9% | 40.8% |
 | **SFT 최종** | **74.2%** | 97% | 8% | 66.4% | 40.8% |
+
+† 첫 토큰 누락 버그가 있는 채점기로 측정 — 재측정 전까지 참고값입니다.
 
 유형별로는 **사실 100%, 지시 50%, 계산 0%**입니다. 자세한 수치와 해석은
 [docs/RESULTS.md](docs/RESULTS.md), 모델별 답변 전문은
@@ -59,6 +70,33 @@ A: 6 곱하기 7의 결과는 28입니다.
    → 계산은 전혀 못 합니다
 ```
 
+## 모델 쓰기
+
+```bash
+# 터미널 대화 — 토큰이 나오는 대로 출력, 긴 대화는 오래된 턴부터 잘라 넣음
+python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat --repetition-penalty 1.1
+
+# OpenAI 호환 API 서버 + 웹 채팅 UI (http://127.0.0.1:8000)
+python serve.py --ckpt checkpoints/sft_1b/latest.pt
+
+# HuggingFace 형식(Qwen3ForCausalLM 호환)으로 내보내기 → transformers · vLLM · llama.cpp
+python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
+```
+
+API 서버는 `/v1/chat/completions`(SSE 스트리밍 포함)·`/v1/completions`·`/v1/models`를
+제공해서 openai SDK, LangChain, Open WebUI 등이 `base_url`만 바꿔 붙습니다. 표준 라이브러리만
+씁니다. 생성 옵션은 temperature · top-p · top-k · min-p · repetition penalty · stop 문자열 · seed.
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="unused")
+r = client.chat.completions.create(model="bebut", messages=[{"role": "user", "content": "안녕?"}])
+```
+
+HF 내보내기가 가능한 이유는 이 모델의 구성(RMSNorm · RoPE · GQA · QK-Norm · SwiGLU · tying)이
+Qwen3와 정확히 같아서입니다. 차이는 RoPE 차원 짝짓기 방식뿐이라 q/k 가중치 행 재배열로
+해결하고, `transformers`로 읽어 logits 일치(오차 ~5e-5)·토크나이저 일치를 CI에서 검증합니다.
+
 ## 무엇을 직접 만들었나
 
 `datasets`(코퍼스 다운로드)와 PyTorch(행렬 연산·자동미분)를 빼면 전부 이 저장소 안에 있습니다.
@@ -75,9 +113,14 @@ A: 6 곱하기 7의 결과는 28입니다.
 - **품질 분류기** — 위키·교과서를 positive, 원본 웹을 negative로 학습한 해시 특징
   로지스틱 회귀(numpy 직접 구현), held-out 정확도 98.3% ([data/quality.py](data/quality.py))
 - **학습 루프** — WSD 스케줄, bf16, torch.compile, gradient accumulation,
-  원자적 체크포인트, 완전 재개 ([train.py](train.py))
-- **평가** — perplexity, KOBEST(비조건부 정규화 + 예측 쏠림 감지), 오염 검사
-  ([eval.py](eval.py), [evals/](evals/))
+  원자적 체크포인트, 비트 단위로 같은 재개(e2e 테스트로 검증), NaN step 건너뛰기,
+  에폭 기반 셔플 ([train.py](train.py), [data/dataloader.py](data/dataloader.py))
+- **추론** — 미리 할당한 KV 캐시, GQA 디코드에서 K·V 복사 없는 SDPA, 스트리밍,
+  top-k/min-p/반복 억제 ([model.py](model.py)), 증분 UTF-8 디코딩 ([chat.py](chat.py))
+- **서빙** — OpenAI 호환 HTTP 서버와 웹 UI를 표준 라이브러리로 ([serve.py](serve.py), [web/](web/))
+- **HF 내보내기** — safetensors 쓰기와 HF tokenizer.json 변환을 직접 구현 ([export_hf.py](export_hf.py))
+- **평가** — perplexity, KOBEST(바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화,
+  예측 쏠림 감지), 오염 검사 ([eval.py](eval.py), [evals/](evals/))
 
 ## 전체 재현 절차
 
@@ -88,6 +131,7 @@ pip install -r requirements.txt
 # 0) 구현 검증 (GPU 불필요, 1분)
 python -m tokenizer.test_bpe      # BPE 왕복·압축률
 python test_model.py              # attention 일치, 초기 loss=ln(V), 오버핏, KV 캐시, 청크 CE
+pip install pytest && python -m pytest   # 추론·채점·재개·SFT·서버 e2e 등 (CPU 30초)
 
 # 1) 토크나이저 (약 20분, CPU 다중코어)
 python -m tokenizer.train_tokenizer --sample-mb 500 --vocab-size 65536
@@ -106,12 +150,14 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 # 5) 평가
 python final_eval.py
 
-# 6) SFT (약 5.5시간)
+# 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
 python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
 python sft_eval.py
 
-# 7) 대화
+# 7) 대화 · 서빙 · 내보내기
 python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat
+python serve.py --ckpt checkpoints/sft_1b/latest.pt
+python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
 ```
 
 작은 규모로 먼저 검증하려면 `--config debug_30m`(노트북) 또는 `mid_125m`(GPU 반나절)을
@@ -120,19 +166,23 @@ python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat
 ## 저장소 구조
 
 ```
-model.py                 트랜스포머 (RMSNorm/RoPE/GQA/QK-Norm/SwiGLU) + 청크 CE + KV 캐시 생성
-train.py                 사전학습 루프 (WSD, bf16, compile, annealing 전환, 원자적 체크포인트)
-sft.py                   SFT (chat template, assistant 토큰만 loss)
-sample.py                생성 / --chat 대화 데모
-eval.py                  perplexity + KOBEST (비조건부 정규화, 예측 쏠림 감지)
+model.py                 트랜스포머 (RMSNorm/RoPE/GQA/QK-Norm/SwiGLU) + 청크 CE + KV 캐시·스트리밍 생성
+train.py                 사전학습 루프 (WSD, bf16, compile, annealing 전환, 원자적 체크포인트, --stop-after)
+sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, 길이별 묶음, --data JSONL)
+chat.py                  대화 템플릿 단일 정의 (학습·추론·평가 공유) + 스트리밍 디코더
+sample.py                생성 / --chat 스트리밍 대화
+serve.py, web/           OpenAI 호환 API 서버 + 웹 채팅 UI (표준 라이브러리)
+export_hf.py             HuggingFace(Qwen3) 형식 내보내기
+eval.py                  perplexity + KOBEST (선택지 경계 정확 채점, 비조건부 정규화, 예측 쏠림 감지)
 final_eval.py            사전학습 최종 평가 (annealing 전/후 비교)
 sft_eval.py              SFT 평가 (자체 문항 + KOBEST)
 bench.py                 처리량·VRAM 벤치마크
 test_model.py            모델 검증 6종
+tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT e2e, 서버, CLI, HF 내보내기
 
 tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64K vocab
 data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더
-configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크용)
+configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
 evals/                   자체 평가 문항 + 학습데이터 오염 검사
 docs/                    결과 정리, 운영 가이드, 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
@@ -153,9 +203,11 @@ RTX 6000 Ada 48GB **한 장**으로 전부 했습니다. 벤치마크로 고른 
 
 - **계산 불가** — 12+7을 14라고 답합니다. 이 규모·데이터로는 개선되지 않습니다.
 - **드문 사실은 지어냅니다** — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.
-- **BoolQ 실패** — 전 구간에서 예측이 한쪽으로 쏠려 무작위 수준입니다.
-- **annealing의 부작용** — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만
-  HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 웹의 서사 텍스트를 너무 줄인 탓으로 보입니다.
+- **BoolQ는 미확인** — 전 구간 무작위 수준·한쪽 쏠림으로 기록했지만, 이는 채점 버그
+  (`"예"`의 채점 토큰 0개)로 설명됩니다. 고친 채점기로 재측정해야 실제 능력을 알 수 있습니다.
+- **annealing의 부작용(재확인 필요)** — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만
+  HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 웹의 서사 텍스트를 너무 줄인 탓으로 봤지만,
+  이 비교도 버그 있는 채점기로 잰 값이라 재측정 후에 결론을 내려야 합니다.
 - **SFT 데이터 오염** — annealing에 SFT와 같은 데이터를 넣어 SFT 검증 loss가
   일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.
 

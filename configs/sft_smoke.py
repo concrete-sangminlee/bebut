@@ -1,6 +1,6 @@
 """SFT 파이프라인 스모크 테스트용 — configs/smoke.py 모델과 짝."""
 
-from configs.smoke import model
+from configs.smoke import model  # noqa: F401 — 아키텍처 재사용
 
 train = dict(
     batch_size=4,

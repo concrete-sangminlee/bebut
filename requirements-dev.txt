@@ -1,0 +1,6 @@
+# 테스트·lint (CPU로 충분)
+-r requirements.txt
+pytest
+ruff
+# 선택: HF 내보내기 검증 (tests/test_export_hf.py). export_hf.py 자체는 필요 없다
+transformers

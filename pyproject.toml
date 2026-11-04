@@ -1,0 +1,24 @@
+[project]
+name = "bebut"
+version = "0.2.0"
+description = "한국어 1.2B LLM을 토크나이저부터 밑바닥부터 — 순수 PyTorch"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B"]
+ignore = [
+  "E402",  # eval_milestones.py 등은 torch import 전에 CUDA_VISIBLE_DEVICES를 꺼야 한다 (의도)
+  "E702",  # 그래프 스크립트의 짧은 한 줄 문장들
+  "B905",  # zip(strict=) — 길이가 같음이 자명한 곳이 대부분
+  "B007",
+  "B019",  # BPE 인코딩 캐시는 토크나이저 수명과 같아 누수가 아니다
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
