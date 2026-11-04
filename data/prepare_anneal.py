@@ -21,8 +21,8 @@ import os
 import time
 from multiprocessing import Pool
 
-import numpy as np
 
+from chat import render
 from tokenizer.bpe import ByteBPETokenizer
 
 from .clean import MinHashDeduper, keep_document
@@ -121,8 +121,10 @@ def build_stream(src):
                     ans = row.get("output") or ""
                     if not user or not ans:
                         continue
-                    text = (f"<|im_start|>user\n{user}<|im_end|>\n"
-                            f"<|im_start|>assistant\n{ans}<|im_end|>")
+                    # chat.py와 같은 형식 (문자열로 넣고 allowed_special로 인코딩)
+                    text = render([{"role": "user", "content": user},
+                                   {"role": "assistant", "content": ans}],
+                                  add_generation_prompt=False).removesuffix("\n")
                 else:
                     text = row.get("text")
                 if text:
