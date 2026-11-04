@@ -6,4 +6,6 @@
 
 - [ ] `python -m tokenizer.test_bpe`
 - [ ] `python test_model.py`
+- [ ] `python -m pytest`
+- [ ] `ruff check .`
 - [ ] 해당되면 실제 학습/평가로 확인 (로그 또는 결과 첨부)

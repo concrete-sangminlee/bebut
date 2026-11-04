@@ -11,15 +11,21 @@
 
 1. 변경 전 [README](README.md)와 [docs/OPERATIONS.md](docs/OPERATIONS.md)로 구조를 파악해주세요.
 2. 코드 스타일은 기존 파일을 따라주세요 (docstring에 "왜"를 적는 방식, 한국어 주석).
-3. 제출 전 최소한 아래 두 검증은 통과해야 합니다 (CPU, 1분 내):
+3. 제출 전 아래 검증을 통과해야 합니다 (CPU, 1분 내). CI가 같은 것을 돌립니다.
 
    ```bash
+   pip install -r requirements-dev.txt
    python -m tokenizer.test_bpe
    python test_model.py
+   python -m pytest        # 추론·채점·데이터로더·학습/SFT e2e·서버·CLI·HF 내보내기
+   ruff check .
    ```
 
-4. 학습 루프나 데이터 파이프라인을 바꿨다면 `configs/debug_30m` 같은 작은 설정으로
-   실제 실행이 되는지 확인해주세요 (GPU 없이도 가능).
+   버그를 고쳤다면 **고치기 전 코드에서 실패하는 테스트**를 함께 넣어주세요
+   (예: `tests/test_eval_scoring.py`, `tests/test_train_e2e.py`).
+
+4. 학습 루프나 데이터 파이프라인을 바꿨다면 `configs/ci_tiny`(CPU 수 초)나
+   `configs/debug_30m` 같은 작은 설정으로 실제 실행이 되는지 확인해주세요.
 
 ## 범위에 대해
 

@@ -45,7 +45,8 @@ def main():
     assert tok.decode(ids_plain) == s
 
     # 4) 저장/로드 후 동일 결과
-    import tempfile, os
+    import os
+    import tempfile
 
     with tempfile.TemporaryDirectory() as d:
         p = os.path.join(d, "tok.json")

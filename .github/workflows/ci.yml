@@ -7,6 +7,17 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - name: ruff
+        run: ruff check .
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -15,15 +26,38 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install numpy regex tqdm
+          pip install numpy regex tqdm pytest
 
       - name: BPE 토크나이저 테스트
         run: python -m tokenizer.test_bpe
 
       - name: 모델 검증 (attention 일치 / 초기 loss / 오버핏 / KV 캐시 / 청크 CE)
         run: python test_model.py
+
+      - name: pytest (추론·채점·데이터로더·학습/SFT e2e·API 서버·CLI)
+        run: python -m pytest tests/ -v
+
+  export-hf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies (transformers는 검증용으로만)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy regex tqdm pytest transformers
+
+      - name: HF(Qwen3) 내보내기 — logits·토크나이저·chat template 일치
+        run: python -m pytest tests/test_export_hf.py -v
