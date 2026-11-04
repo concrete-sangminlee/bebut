@@ -7,16 +7,20 @@
 - bf16 autocast (+ CUDA면 TF32, torch.compile)
 - gradient accumulation으로 유효 배치 확보
 - 체크포인트에 model/optimizer/dataloader step까지 저장 → 완전 재개
-- 주기적 val loss + 생성 샘플 출력, metrics.csv 로깅 (wandb는 --wandb로 선택)
+- 주기적 val loss(매번 같은 배치) + 생성 샘플 출력, metrics.csv 로깅 (wandb는 --wandb로 선택)
+- loss·gradient가 NaN/inf가 되면 그 step을 건너뛰고, 연속되면 종료해 감시 스크립트가
+  마지막 체크포인트에서 다시 띄우게 한다
 
 사용 예:
   python train.py --config debug_30m
   python train.py --config base_1b --resume checkpoints/base_1b/latest.pt
+  python train.py --config base_1b --resume ... --stop-after 19200   # 그 step 저장 후 정지
 """
 
 import argparse
 import csv
 import importlib
+import math
 import os
 import time
 
@@ -25,6 +29,9 @@ import torch
 from data.dataloader import ShardedDataLoader
 from model import GPT
 from tokenizer.bpe import ByteBPETokenizer
+
+METRIC_FIELDS = ["step", "lr", "train_loss", "val_loss", "tokens_per_sec", "grad_norm"]
+MAX_BAD_STEPS = 5  # 연속 비정상 step 허용 횟수 — 넘으면 프로세스를 끝내 재개에 맡긴다
 
 
 def lr_at(step, cfg):
@@ -40,7 +47,14 @@ def lr_at(step, cfg):
 
 @torch.no_grad()
 def estimate_val_loss(model, loader, iters, device_type, loss_chunk=None):
+    """매번 **같은** val 배치 iters개로 잰다.
+
+    예전에는 val 로더가 호출될 때마다 다음 배치로 넘어가서, 평가마다 다른 8만 토큰을
+    쟀다. 그래서 val loss가 100 step 주기로 ±0.1씩 출렁였고, 모델 변화와 표본 노이즈를
+    구분할 수 없었다. 처음으로 되감아 같은 표본을 쓰면 값의 차이가 곧 모델의 차이다.
+    """
     model.eval()
+    loader.step = 0
     losses = []
     for _ in range(iters):
         x, y = loader.next_batch()
@@ -51,6 +65,22 @@ def estimate_val_loss(model, loader, iters, device_type, loss_chunk=None):
     return sum(losses) / len(losses)
 
 
+def open_metrics(path):
+    """metrics.csv를 이어 쓴다. 예전 형식(열 5개) 파일이면 그 열만 쓴다."""
+    fields = METRIC_FIELDS
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        with open(path, newline="") as f:
+            fields = next(csv.reader(f))
+        new = False
+    else:
+        new = True
+    f = open(path, "a", newline="")
+    w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+    if new:
+        w.writeheader()
+    return f, w
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True, help="configs/ 모듈명 (예: debug_30m)")
@@ -59,6 +89,9 @@ def main():
     ap.add_argument("--resume", default=None)
     ap.add_argument("--anneal-shard-dir", default=None,
                     help="decay 구간에서 쓸 고품질 shard 디렉토리 (config로도 지정 가능)")
+    ap.add_argument("--out-dir", default="checkpoints", help="체크포인트 상위 디렉토리")
+    ap.add_argument("--stop-after", type=int, default=None,
+                    help="이 step을 마치면 체크포인트를 저장하고 정상 종료 (GPU 양보·실험용)")
     ap.add_argument("--compile", action="store_true", default=None)
     ap.add_argument("--wandb", action="store_true")
     args = ap.parse_args()
@@ -71,17 +104,20 @@ def main():
     if device == "cuda":
         torch.set_float32_matmul_precision("high")  # TF32
 
-    ckpt_dir = os.path.join("checkpoints", args.config)
+    ckpt_dir = os.path.join(args.out_dir, args.config)
     os.makedirs(ckpt_dir, exist_ok=True)
 
     tok = ByteBPETokenizer.load(args.tokenizer)
+    # 새로 시작하는 학습은 epoch 모드(모든 토큰을 한 번씩). 예전 체크포인트를 재개하면
+    # 저장된 상태에 mode가 없어서 load_state_dict가 random으로 되돌린다.
+    sampling = tcfg.get("sampling", "epoch")
 
     def make_loaders(shard_dir):
         return (
             ShardedDataLoader(shard_dir, "train", tcfg["batch_size"], mcfg.max_seq_len,
-                              device=device),
+                              device=device, mode=sampling),
             ShardedDataLoader(shard_dir, "val", tcfg["batch_size"], mcfg.max_seq_len,
-                              seed=123, device=device),
+                              seed=123, device=device, mode=sampling),
         )
 
     # Annealing(=학습률 decay 구간)에서는 고품질 데이터로 갈아탄다.
@@ -93,22 +129,38 @@ def main():
     if anneal_dir and anneal_from is None:
         anneal_from = int(tcfg["max_steps"] * 0.8)  # WSD decay 시작 지점과 맞춘다
 
-    train_loader, val_loader = make_loaders(args.shard_dir)
-    annealing = False
-
+    # 초기 가중치를 재현 가능하게 — 예전엔 시드가 없어서 같은 설정도 실행마다 다른 모델이 나왔다
+    torch.manual_seed(tcfg.get("seed", 1337))
     model = GPT(mcfg).to(device)
     print(f"모델: {model.num_params()/1e6:.1f}M 파라미터 (임베딩 제외) | device: {device}")
     opt = torch.optim.AdamW(model.param_groups(tcfg["weight_decay"]),
                             lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device == "cuda"))
 
     start_step = 0
+    loader_state = None
     if args.resume:
-        ckpt = torch.load(args.resume, map_location=device, weights_only=False)
+        # CPU로 먼저 읽는다 — 옵티마이저 상태까지 GPU에 바로 올리면 순간 메모리가 두 배가 된다
+        ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
         model.load_state_dict(ckpt["model"])
         opt.load_state_dict(ckpt["optimizer"])
-        train_loader.load_state_dict(ckpt["train_loader"])
+        loader_state = ckpt["train_loader"]
         start_step = ckpt["step"] + 1
+        del ckpt
         print(f"재개: step {start_step}부터")
+
+    # 저장된 로더 상태는 저장 시점에 쓰던 로더의 것이다. 전환은 anneal_from step을
+    # 학습하기 전에 일어나므로, 마지막으로 끝낸 step(start_step-1)이 anneal_from 이상이면
+    # 그 상태는 annealing 로더 것이다.
+    #
+    # 예전 구현은 이 구분 없이 재개 직후 전환하면서 로더 위치를 'step 번호'로 덮어썼다.
+    # 로더는 마이크로배치마다 한 칸씩(=step당 grad_accum칸) 가므로, 재개할 때마다
+    # annealing 데이터 스트림이 앞쪽으로 되감겨 이미 본 배치를 다시 학습했다.
+    annealing = bool(anneal_dir) and start_step > anneal_from
+    train_loader, val_loader = make_loaders(anneal_dir if annealing else args.shard_dir)
+    if loader_state is not None:
+        train_loader.load_state_dict(loader_state)
+    if annealing:
+        print(f"annealing 구간 재개 — {anneal_dir}의 저장된 위치(step {train_loader.step})부터")
 
     use_compile = args.compile if args.compile is not None else (device == "cuda")
     if use_compile:
@@ -120,20 +172,17 @@ def main():
 
         run = wandb.init(project="bebut", name=args.config, config=tcfg)
 
-    metrics_path = os.path.join(ckpt_dir, "metrics.csv")
-    metrics_f = open(metrics_path, "a", newline="")
-    metrics = csv.writer(metrics_f)
-    if start_step == 0:
-        metrics.writerow(["step", "lr", "train_loss", "val_loss", "tokens_per_sec"])
+    metrics_f, metrics = open_metrics(os.path.join(ckpt_dir, "metrics.csv"))
 
     tokens_per_step = tcfg["batch_size"] * tcfg["grad_accum"] * mcfg.max_seq_len
+    end_step = tcfg["max_steps"] if args.stop_after is None else min(
+        tcfg["max_steps"], args.stop_after + 1)
     model.train()
-    t0 = time.time()
-    for step in range(start_step, tcfg["max_steps"]):
-        # 재개했을 때도 올바른 데이터를 쓰도록 매 step 조건을 확인한다
+    t0 = t_start = time.time()
+    bad_steps = 0
+    for step in range(start_step, end_step):
         if anneal_dir and not annealing and step >= anneal_from:
             train_loader, val_loader = make_loaders(anneal_dir)
-            train_loader.step = step  # (seed, step) 결정론 유지 — 재개해도 같은 순서
             annealing = True
             print(f"=== step {step}: annealing 데이터로 전환 ({anneal_dir}) ===", flush=True)
 
@@ -141,22 +190,40 @@ def main():
         for g in opt.param_groups:
             g["lr"] = lr
 
-        loss_acc = 0.0
+        # loss는 GPU 텐서로 모은다. 마이크로배치마다 .item()을 부르면 step당
+        # grad_accum번(1.2B 설정에선 256번) CPU-GPU 동기화가 걸린다.
+        loss_acc = torch.zeros((), device=device)
         for micro in range(tcfg["grad_accum"]):
             x, y = train_loader.next_batch()
             with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
                 _, loss = model(x, y, loss_chunk=tcfg.get("loss_chunk"))
             (loss / tcfg["grad_accum"]).backward()
-            loss_acc += loss.item() / tcfg["grad_accum"]
-        torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
-        opt.step()
+            loss_acc += loss.detach() / tcfg["grad_accum"]
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
+        loss_val, gn = loss_acc.item(), grad_norm.item()
+
+        if math.isfinite(loss_val) and math.isfinite(gn):
+            bad_steps = 0
+            opt.step()
+        else:
+            # 한 번의 이상치로 가중치를 망치지 않는다. 데이터는 이미 소비했으니 업데이트만 건너뛴다.
+            bad_steps += 1
+            print(f"경고: step {step} loss {loss_val} / grad norm {gn} — 업데이트 건너뜀 "
+                  f"({bad_steps}/{MAX_BAD_STEPS})", flush=True)
+            if bad_steps >= MAX_BAD_STEPS:
+                raise RuntimeError("비정상 step이 연속됐다 — 마지막 체크포인트에서 재개할 것")
         opt.zero_grad(set_to_none=True)
 
+        tps = ""
         if step % 10 == 0:
             dt = time.time() - t0
             t0 = time.time()
             tps = tokens_per_step * (10 if step > start_step else 1) / dt
-            print(f"step {step:6d} | loss {loss_acc:.4f} | lr {lr:.2e} | {tps/1e3:.0f}K tok/s")
+            done = step - start_step + 1
+            eta = (time.time() - t_start) / done * (end_step - step - 1) / 3600
+            print(f"step {step:6d} | loss {loss_val:.4f} | lr {lr:.2e} | gnorm {gn:.2f} "
+                  f"| {tps/1e3:.0f}K tok/s | 남은 시간 ~{eta:.1f}h", flush=True)
+            tps = f"{tps:.0f}"
 
         val_loss = ""
         if step > 0 and step % tcfg["eval_every"] == 0:
@@ -164,20 +231,31 @@ def main():
             print(f"step {step:6d} | val loss {val_loss:.4f}")
             # 생성 샘플로 정성 확인
             raw = getattr(model, "_orig_mod", model)
-            prompt = torch.tensor([tok.encode("대한민국의 수도는")], device=device)
-            sample = raw.generate(prompt, 48, temperature=0.8,
-                                  eos_id=tok.special_tokens["<|eos|>"])
-            print("샘플:", tok.decode(sample[0].tolist()))
+            ids = tok.encode("대한민국의 수도는")
+            if max(ids) < mcfg.vocab_size:  # 실험용 작은 vocab 모델에 큰 토크나이저를 줬을 때 방어
+                sample = raw.generate(torch.tensor([ids], device=device), 48, temperature=0.8,
+                                      eos_id=tok.special_tokens["<|eos|>"])
+                print("샘플:", tok.decode([t for t in sample[0].tolist() if t < tok.vocab_size]))
             model.train()
+            val_loss = f"{val_loss:.4f}"
 
-        metrics.writerow([step, f"{lr:.3e}", f"{loss_acc:.4f}", val_loss, ""])
+        metrics.writerow({"step": step, "lr": f"{lr:.3e}", "train_loss": f"{loss_val:.4f}",
+                          "val_loss": val_loss, "tokens_per_sec": tps, "grad_norm": f"{gn:.4f}"})
         if run:
-            log = {"loss": loss_acc, "lr": lr}
+            log = {"loss": loss_val, "lr": lr, "grad_norm": gn}
             if val_loss != "":
-                log["val_loss"] = val_loss
+                log["val_loss"] = float(val_loss)
             run.log(log, step=step)
 
-        if step > 0 and step % tcfg["save_every"] == 0 or step == tcfg["max_steps"] - 1:
+        last = step == tcfg["max_steps"] - 1
+        # 장기 학습용 스냅샷 — 덮어쓰지 않고 따로 남겨 되돌릴 수 있게 한다.
+        # 마지막 step(max_steps-1)은 ms의 배수가 아니라서 따로 챙긴다 — 최종 모델 스냅샷이 빠졌던 실수.
+        # annealing 전환 직전 step도 남긴다 — annealing 효과를 비교할 기준점이다
+        # (예전에는 pause_at_19200.sh로 학습을 멈추고 latest.pt를 손으로 복사했다).
+        ms = tcfg.get("milestone_every")
+        pre_anneal = bool(anneal_dir) and step == anneal_from - 1
+        snapshot = bool(ms) and (step % ms == 0 or last or pre_anneal)
+        if (step > 0 and step % tcfg["save_every"] == 0) or last or step == end_step - 1 or snapshot:
             raw = getattr(model, "_orig_mod", model)
             ckpt = {
                 "model": raw.state_dict(),
@@ -185,6 +263,7 @@ def main():
                 "train_loader": train_loader.state_dict(),
                 "step": step,
                 "config": args.config,
+                "annealing": annealing,
             }
             # 원자적 저장: 임시 파일에 다 쓴 뒤 rename.
             # 그냥 덮어쓰면 저장 중 중단됐을 때 체크포인트가 깨져 학습 전체를 잃는다.
@@ -193,18 +272,18 @@ def main():
             torch.save(ckpt, tmp)
             os.replace(tmp, path)
             metrics_f.flush()
-            print(f"체크포인트 저장: {path} (step {step})")
+            print(f"체크포인트 저장: {path} (step {step})", flush=True)
 
-            # 장기 학습용 스냅샷 — 덮어쓰지 않고 따로 남겨 되돌릴 수 있게 한다
-            ms = tcfg.get("milestone_every")
-            # 마지막 step(max_steps-1)은 ms의 배수가 아니라서 따로 챙긴다 — 최종 모델 스냅샷이 빠졌던 실수
-            if ms and (step % ms == 0 or step == tcfg["max_steps"] - 1):
+            if snapshot:
                 snap = os.path.join(ckpt_dir, f"step_{step:06d}.pt")
                 torch.save(ckpt, snap)
                 print(f"스냅샷 저장: {snap}")
 
     metrics_f.close()
-    print("학습 완료")
+    if end_step < tcfg["max_steps"]:
+        print(f"--stop-after {args.stop_after}: step {end_step - 1}에서 정지 (재개 가능)")
+    else:
+        print("학습 완료")
 
 
 if __name__ == "__main__":
