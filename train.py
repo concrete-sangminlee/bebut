@@ -31,6 +31,7 @@ from model import GPT
 from tokenizer.bpe import ByteBPETokenizer
 
 METRIC_FIELDS = ["step", "lr", "train_loss", "val_loss", "tokens_per_sec", "grad_norm"]
+LEGACY_FIELDS = METRIC_FIELDS[:5]  # 예전 train.py가 쓰던 열
 MAX_BAD_STEPS = 5  # 연속 비정상 step 허용 횟수 — 넘으면 프로세스를 끝내 재개에 맡긴다
 
 
@@ -66,11 +67,16 @@ def estimate_val_loss(model, loader, iters, device_type, loss_chunk=None):
 
 
 def open_metrics(path):
-    """metrics.csv를 이어 쓴다. 예전 형식(열 5개) 파일이면 그 열만 쓴다."""
+    """metrics.csv를 이어 쓴다. 예전 형식(열 5개) 파일이면 그 열만 쓴다.
+
+    예전 train.py는 start_step == 0일 때만 헤더를 써서, --resume으로 처음 만들어진
+    파일엔 헤더가 없다. 첫 줄이 헤더가 아니면 예전 열 순서로 본다.
+    """
     fields = METRIC_FIELDS
     if os.path.exists(path) and os.path.getsize(path) > 0:
         with open(path, newline="") as f:
-            fields = next(csv.reader(f))
+            first = next(csv.reader(f), [])
+        fields = first if first[:1] == ["step"] else LEGACY_FIELDS
         new = False
     else:
         new = True
@@ -138,6 +144,7 @@ def main():
 
     start_step = 0
     loader_state = None
+    saved_annealing = None
     if args.resume:
         # CPU로 먼저 읽는다 — 옵티마이저 상태까지 GPU에 바로 올리면 순간 메모리가 두 배가 된다
         ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
@@ -145,6 +152,7 @@ def main():
         opt.load_state_dict(ckpt["optimizer"])
         loader_state = ckpt["train_loader"]
         start_step = ckpt["step"] + 1
+        saved_annealing = ckpt.get("annealing")  # 이 키가 생기기 전 체크포인트면 None
         del ckpt
         print(f"재개: step {start_step}부터")
 
@@ -156,6 +164,11 @@ def main():
     # 로더는 마이크로배치마다 한 칸씩(=step당 grad_accum칸) 가므로, 재개할 때마다
     # annealing 데이터 스트림이 앞쪽으로 되감겨 이미 본 배치를 다시 학습했다.
     annealing = bool(anneal_dir) and start_step > anneal_from
+    if saved_annealing is not None and saved_annealing != annealing:
+        # 예: annealing 중 체크포인트를 --anneal-shard-dir 없이 재개 → 고품질 데이터 로더의
+        # 위치가 웹 데이터 로더에 들어가 엉뚱한 곳부터 읽는다. 조용히 넘어가지 않는다.
+        raise SystemExit(f"체크포인트는 annealing={saved_annealing}로 저장됐는데 지금 설정으로는 "
+                         f"annealing={annealing}입니다 — anneal_shard_dir·anneal_from_step을 확인할 것")
     train_loader, val_loader = make_loaders(anneal_dir if annealing else args.shard_dir)
     if loader_state is not None:
         train_loader.load_state_dict(loader_state)
@@ -179,6 +192,7 @@ def main():
         tcfg["max_steps"], args.stop_after + 1)
     model.train()
     t0 = t_start = time.time()
+    last_log = start_step - 1  # 처리량은 마지막 로그 이후 실제로 돈 step 수로 잰다
     bad_steps = 0
     for step in range(start_step, end_step):
         if anneal_dir and not annealing and step >= anneal_from:
@@ -218,7 +232,8 @@ def main():
         if step % 10 == 0:
             dt = time.time() - t0
             t0 = time.time()
-            tps = tokens_per_step * (10 if step > start_step else 1) / dt
+            tps = tokens_per_step * (step - last_log) / dt  # 재개 직후엔 10 step 미만일 수 있다
+            last_log = step
             done = step - start_step + 1
             eta = (time.time() - t_start) / done * (end_step - step - 1) / 3600
             print(f"step {step:6d} | loss {loss_val:.4f} | lr {lr:.2e} | gnorm {gn:.2f} "
@@ -254,7 +269,7 @@ def main():
         # (예전에는 pause_at_19200.sh로 학습을 멈추고 latest.pt를 손으로 복사했다).
         ms = tcfg.get("milestone_every")
         pre_anneal = bool(anneal_dir) and step == anneal_from - 1
-        snapshot = bool(ms) and (step % ms == 0 or last or pre_anneal)
+        snapshot = bool(ms) and ((step > 0 and step % ms == 0) or last or pre_anneal)
         if (step > 0 and step % tcfg["save_every"] == 0) or last or step == end_step - 1 or snapshot:
             raw = getattr(model, "_orig_mod", model)
             ckpt = {

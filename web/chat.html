@@ -83,6 +83,7 @@
 const $ = (id) => document.getElementById(id);
 let history = [];
 let controller = null;
+let conversation = 0;  // "새 대화"마다 증가 — 중지된 이전 대화의 답이 새 기록에 섞이지 않게
 
 fetch("/v1/models").then(r => r.json()).then(d => {
   const m = d.data[0];
@@ -111,6 +112,7 @@ function setBusy(busy) {
 }
 
 async function send(text) {
+  const conv = conversation;
   history.push({ role: "user", content: text });
   add("user", text);
   const el = add("assistant", "");
@@ -154,6 +156,7 @@ async function send(text) {
     controller = null;
     setBusy(false);
   }
+  if (conv !== conversation) return;  // 스트리밍 중에 "새 대화"를 눌렀다
   if (!el.classList.contains("error")) {
     history.push({ role: "assistant", content: body.textContent.trim() });
     const meta = document.createElement("div");
@@ -183,6 +186,7 @@ $("input").addEventListener("input", (e) => {
   e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
 });
 $("clear").addEventListener("click", () => {
+  conversation++;
   if (controller) controller.abort();
   history = [];
   $("msgs").innerHTML = '<p class="empty" id="empty">새 대화를 시작합니다.</p>';

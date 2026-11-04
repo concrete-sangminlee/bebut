@@ -80,7 +80,7 @@ class Engine:
             top_k=num("top_k", 0, 0, self.model.cfg.vocab_size, int),
             min_p=num("min_p", 0.0, 0.0, 1.0),
             repetition_penalty=num("repetition_penalty", 1.0, 0.5, 3.0),
-            seed=req.get("seed"),
+            seed=None if req.get("seed") is None else num("seed", 0, 0, 2**63 - 1, int),
             stop=stop[:4],
         )
 
@@ -94,7 +94,10 @@ class Engine:
                 raise BadRequest(f"role은 {ROLES} 중 하나여야 합니다")
             content = m.get("content", "")
             if isinstance(content, list):  # OpenAI의 [{type: text, text: ...}] 형식
-                content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+                texts = [p.get("text", "") for p in content if isinstance(p, dict)]
+                if not all(isinstance(t, str) for t in texts):
+                    raise BadRequest("content의 text는 문자열이어야 합니다")
+                content = "".join(texts)
             if not isinstance(content, str):
                 raise BadRequest("content는 문자열이어야 합니다")
             clean.append({"role": m["role"], "content": content})
@@ -250,8 +253,8 @@ def make_handler(engine: Engine, verbose=False):
                     raise BadRequest("JSON 객체를 보내야 합니다")
                 p = engine.sampling(req)
                 ids = engine.chat_prompt(req, p["max_tokens"]) if chat else engine.text_prompt(req)
-            except json.JSONDecodeError:
-                return self._error(400, "JSON 형식이 아닙니다")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return self._error(400, "UTF-8 JSON 형식이 아닙니다")
             except BadRequest as e:
                 return self._error(400, str(e))
 

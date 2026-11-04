@@ -113,11 +113,18 @@ def test_completions_endpoint(server):
     ({**CHAT, "temperature": 99}, None),
     ({**CHAT, "max_tokens": "많이"}, None),
     ({"prompt": ""}, None),
+    ({**CHAT, "seed": "abc"}, None),
+    ({**CHAT, "seed": 1e30}, None),
+    ({**CHAT, "seed": [1]}, None),
+    ({"messages": [{"role": "user", "content": [{"type": "text", "text": 5}]}]}, None),
+    (None, b'{"messages": "\xff\xfe"}'),
 ])
 def test_bad_requests_get_400(server, body, raw):
     path = "/v1/completions" if body and "prompt" in body else "/v1/chat/completions"
     status, _, payload = request(server, "POST", path, body, raw)
     assert status == 400 and "message" in json.loads(payload)["error"]
+    if body is not None:  # 스트리밍이어도 200 + 끊긴 스트림이 아니라 400이어야 한다
+        assert request(server, "POST", path, {**body, "stream": True})[0] == 400
 
 
 def test_unknown_path_404(server):

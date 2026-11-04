@@ -117,3 +117,30 @@ def test_bf16_cast_keeps_rope_fp32(tiny_model):
     assert torch.equal(tiny_model.rope, ref)
     # bf16 가중치로도 생성이 돈다
     tiny_model.generate(torch.randint(0, 1000, (1, 4)), 4, temperature=0.0)
+
+
+def test_min_p_renormalizes_before_top_p():
+    """min-p로 후보를 줄인 뒤 top-p 누적합은 남은 후보 기준이어야 한다."""
+    logits = torch.tensor([[0.5, 0.3, 0.1, 0.1]]).log()
+    g = torch.Generator().manual_seed(0)
+    # min_p=.3 → {0, 1}만 남고 재정규화하면 [.625, .375] → top_p=.6이면 0번만
+    picks = {int(sample_next(logits, 1.0, top_p=0.6, min_p=0.3, generator=g)) for _ in range(200)}
+    assert picks == {0}
+
+
+def test_repetition_penalty_exempts_stop_tokens(tiny_model):
+    """프롬프트에 종료 토큰이 있어도 그 logit은 깎지 않는다 (대화 프롬프트엔 늘 <|im_end|>가 있다)."""
+    g = torch.Generator().manual_seed(0)
+    for _ in range(2000):  # greedy 1순위가 이미 프롬프트에 있는 경우를 찾는다
+        prompt = torch.randint(0, 1000, (1, 60), generator=g)
+        with torch.no_grad():
+            top = int(tiny_model(prompt)[0][0, -1].argmax())
+        if top in prompt[0].tolist():
+            break
+    else:
+        raise AssertionError("조건에 맞는 프롬프트를 못 찾았다")
+    first = lambda **kw: int(tiny_model.generate(prompt, 1, temperature=0.0, **kw)[0, -1])  # noqa: E731
+    # 종료 토큰이 아니면 벌점 때문에 1순위에서 밀려난다
+    assert first(repetition_penalty=1e9) != top
+    # 종료 토큰이면 벌점에서 빠져 그대로 1순위
+    assert first(repetition_penalty=1e9, eos_id=top) == top

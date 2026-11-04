@@ -63,8 +63,38 @@ def test_resume_across_annealing_is_bit_exact(workspace):
     # 스냅샷: 6의 배수 + 마지막 step + annealing 직전(7)
     snaps = sorted(os.listdir(d / "full" / "ci_tiny"))
     assert {"step_000006.pt", "step_000007.pt", "step_000011.pt"} <= set(snaps)
+    assert "step_000000.pt" not in snaps  # step 0은 남기지 않는다 (1.2B면 14GB)
 
     # metrics.csv: 재개해도 헤더가 한 번만, step이 빠짐없이
     rows = (d / "split" / "ci_tiny" / "metrics.csv").read_text().strip().splitlines()
     assert rows[0].startswith("step,") and sum(r.startswith("step,") for r in rows) == 1
     assert [int(r.split(",")[0]) for r in rows[1:]] == list(range(12))
+
+
+def run_train_raw(*args, cwd):
+    env = {**os.environ, "PYTHONPATH": ROOT}
+    cmd = [sys.executable, os.path.join(ROOT, "train.py"), "--config", "ci_tiny", *args]
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, timeout=300)
+
+
+def test_annealing_checkpoint_without_anneal_dir_is_refused(workspace):
+    d, tok = workspace
+    base = ["--shard-dir", str(d / "web"), "--tokenizer", str(tok), "--out-dir", str(d / "mm")]
+    run_train(*base, "--anneal-shard-dir", str(d / "anneal"), "--stop-after", "9", cwd=d)
+    r = run_train_raw(*base, "--resume", str(d / "mm" / "ci_tiny" / "latest.pt"), cwd=d)
+    assert r.returncode != 0 and "annealing=True" in (r.stdout + r.stderr)
+
+
+def test_headerless_legacy_metrics_csv(workspace):
+    """예전 train.py가 --resume으로 처음 만든 metrics.csv엔 헤더가 없다."""
+    from train import LEGACY_FIELDS, open_metrics
+
+    path = workspace[0] / "legacy_metrics.csv"
+    path.write_text("100,3.000e-04,2.5000,,\n")
+    f, w = open_metrics(str(path))
+    w.writerow({"step": 101, "lr": "3.000e-04", "train_loss": "2.4", "val_loss": "",
+                "tokens_per_sec": "", "grad_norm": "1.0"})
+    f.close()
+    rows = path.read_text().splitlines()
+    assert rows == ["100,3.000e-04,2.5000,,", "101,3.000e-04,2.4,,"]
+    assert len(LEGACY_FIELDS) == 5

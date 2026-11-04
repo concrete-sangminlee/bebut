@@ -52,6 +52,7 @@ class ShardedDataLoader:
         self.seed = state["seed"]
         # mode가 없는 상태 = 이 키가 생기기 전 체크포인트 → 그때 방식(random) 그대로 이어간다
         self.mode = state.get("mode", "random")
+        self._perm_epoch = None  # seed가 바뀌었을 수 있으니 에폭 순열 캐시를 버린다
 
     # ---------------- 윈도우 선택 ----------------
 

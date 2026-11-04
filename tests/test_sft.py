@@ -8,7 +8,7 @@ import sys
 
 import torch
 
-from sft import collate, make_batches, padding_efficiency
+from sft import _instruction_row, collate, make_batches, padding_efficiency
 from tests.conftest import ROOT
 
 
@@ -85,3 +85,19 @@ def test_sft_e2e_saves_epoch_checkpoints(tmp_path, tiny_tok):
     end = tiny_tok.special_tokens["<|im_end|>"]
     gen = model.generate(torch.tensor([ids]), 30, temperature=0.0, eos_id=end)[0, len(ids):].tolist()
     assert end in gen and "안녕하세요" in tiny_tok.decode(gen)
+
+
+def test_instruction_row_keeps_same_rows_as_old_code():
+    """예전 규칙: user = instruction (+ "\n\n" + input), user와 output이 비어 있지 않으면 채택."""
+    def old_rule(inst, inp, out):
+        user = inst
+        if inp:
+            user += "\n\n" + inp
+        return bool(user) and bool(out)
+
+    for inst, inp, out in [("질문", None, "답"), ("", "입력만", "답"), ("", None, "답"),
+                           ("질문", "", ""), ("질문", "입력", "답")]:
+        m = _instruction_row(inst, inp, out)
+        assert (m is not None) == old_rule(inst, inp, out), (inst, inp, out)
+        if m:
+            assert m[0]["content"] == inst + (f"\n\n{inp}" if inp else "")
