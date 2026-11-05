@@ -12,6 +12,7 @@
 사용 예:
   python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
   python sft.py --base ... --config sft_1b --data my_chats.jsonl   # 직접 만든 데이터
+  python sft.py --base ... --config sft_1b --extra-data data/math_sft.jsonl   # 기본 데이터 + 산술
 
 --data JSONL 한 줄 형식 (둘 중 하나):
   {"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
@@ -170,6 +171,8 @@ def main():
     ap.add_argument("--config", default="sft_1b")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--data", default=None, help="JSONL 데이터 (없으면 KoAlpaca + KULLM v2)")
+    ap.add_argument("--extra-data", nargs="*", default=[],
+                    help="학습에만 더할 JSONL (예: data/math_sft.jsonl). val 분할은 바뀌지 않는다")
     ap.add_argument("--out-dir", default="checkpoints")
     ap.add_argument("--limit", type=int, default=None, help="데이터셋별 예제 수 제한 (테스트용)")
     ap.add_argument("--device", default="auto")
@@ -184,6 +187,12 @@ def main():
     examples = build_examples(tok, tcfg["max_len"], args.limit, args.data)
     n_val = min(max(64, len(examples) // 100), len(examples) // 5)
     val_ex, train_ex = examples[:n_val], examples[n_val:]
+    # 추가 데이터는 분할 '뒤에' 학습 쪽에만 붙인다. 앞에서 섞으면 Random(42) 셔플 결과가
+    # 달라져 val이 통째로 바뀌고, 예전 실행과 val loss를 비교할 수 없게 된다.
+    for path in args.extra_data:
+        extra = build_examples(tok, tcfg["max_len"], None, path)
+        train_ex += extra
+        print(f"추가 데이터 {path}: {len(extra)}개를 학습에 더함")
     print(f"train {len(train_ex)} / val {len(val_ex)} 예제")
 
     # CPU로 읽는다. 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)도 들어 있어서
