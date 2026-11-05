@@ -45,10 +45,14 @@ def test_haerae_formatter_handles_four_and_five_options():
 
 
 def test_aggregate_micro_and_macro():
-    per = {"a": {"n": 10, "acc": 0.5, "acc_len": 0.5, "acc_calib": 0.6, "truncated": 1},
-           "b": {"n": 30, "acc": 0.1, "acc_len": 0.2, "acc_calib": 0.2, "truncated": 0}}
+    pa = {"acc": {0: 4, 1: 6}, "acc_len": {0: 10}, "acc_calib": {1: 10}}
+    pb = {"acc": {0: 30}, "acc_len": {2: 30}, "acc_calib": {0: 15, 3: 15}}
+    per = {"a": {"n": 10, "acc": 0.5, "acc_len": 0.5, "acc_calib": 0.6, "truncated": 1, "preds": pa},
+           "b": {"n": 30, "acc": 0.1, "acc_len": 0.2, "acc_calib": 0.2, "truncated": 0, "preds": pb}}
     r = ev._aggregate(per)
-    assert r["n"] == 40 and r["truncated"] == 1
+    assert r["n"] == 40 and r["truncated"] == 1 and r["by_config"]["a"]["truncated"] == 1
+    # 예측 분포 합계 (mc 형식의 문자 쏠림 감지용)
+    assert r["preds"]["acc"] == {0: 34, 1: 6} and r["preds"]["acc_calib"] == {0: 15, 1: 10, 3: 15}
     assert math.isclose(r["acc_calib"], (6 + 6) / 40) and math.isclose(r["macro_acc_calib"], 0.4)
 
 
@@ -97,6 +101,8 @@ def test_kmmlu_and_haerae_details_end_to_end(monkeypatch, tiny_tok):
     model = make_model(vocab_size=1024, max_seq_len=512)
     k = ev.kmmlu_details(model, tiny_tok, 5, "cpu")
     assert k["n"] == 10 and set(k["by_config"]) == {"Biology", "Law"}
+    assert ev.kmmlu_details(model, tiny_tok, 10, "cpu", limit=1)["shots"] == 5  # dev가 5문항뿐
+    assert sum(k["preds"]["acc_calib"].values()) == 10
     assert ev.kmmlu_details(model, tiny_tok, 5, "cpu", limit=2)["n"] == 4
     h = ev.haerae_details(model, tiny_tok, 3, "cpu", fmt="mc")
     assert h["n"] == 5  # 앞 3문항은 few-shot 예시로 쓰고 채점에서 뺀다

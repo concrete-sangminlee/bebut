@@ -87,13 +87,13 @@ python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-
 cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 ```
 
-**CPU에서는 GGUF Q8_0 + llama.cpp가 가장 빠릅니다** — 1.2B 실측(4코어) 17.3 tok/s로 PyTorch fp32
-(5.3)의 3.3배입니다. PyTorch 경로도 bf16을 지원하는 CPU에선 자동으로 bf16(6.9 tok/s)을 씁니다.
+**CPU에서는 GGUF Q8_0 + llama.cpp가 가장 빠릅니다** — 1.2B 실측(4코어) 16.4 tok/s로 PyTorch fp32
+(8.2)의 2.0배입니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.1 tok/s)을 씁니다.
 측정 전체와 권장 구성은 [docs/INFERENCE.md](docs/INFERENCE.md)에 있습니다.
 
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.7초 → 0.36초). fp32에선 출력이
+(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). fp32에선 출력이
 캐시 없이 생성한 것과 토큰 단위로 같습니다. bf16(CUDA·bf16 지원 CPU의 기본)에선 반올림 차이로 드물게 달라질 수
 있어, 완전한 재현이 필요하면 `--no-prefix-cache`로 끕니다.
 

@@ -310,8 +310,8 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
         API 서버는 표준 라이브러리만으로 <code>/v1/chat/completions</code>(SSE 스트리밍)·<code>/v1/completions</code>·<code>/v1/models</code>를
         제공해 openai SDK, LangChain, Open WebUI가 <code>base_url</code>만 바꿔 붙습니다.
         HF·GGUF 내보내기는 구성이 Qwen3와 같다는 점을 이용해 RoPE 차원 순서만 재배열하며, transformers와 llama.cpp로 실제로 읽어 logits·토크나이저 일치를 CI에서 검증합니다.
-        대화 CLI와 서버는 턴 사이에 KV 캐시를 재사용해 대화가 길어져도 첫 토큰 지연이 늘지 않습니다(1.2B, 기록 1,060토큰: 2.7초 → 0.36초).
-        CPU에서는 GGUF Q8_0 + llama.cpp가 17.3 tok/s로 가장 빠릅니다(4코어 실측, PyTorch fp32의 3.3배) —
+        대화 CLI와 서버는 턴 사이에 KV 캐시를 재사용해 대화가 길어져도 첫 토큰 지연이 늘지 않습니다(1.2B, 기록 1,060토큰: 2.04초 → 0.27초).
+        CPU에서는 GGUF Q8_0 + llama.cpp가 16.4 tok/s로 가장 빠릅니다(4코어 실측, PyTorch fp32의 2.0배) —
         <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/INFERENCE.md">추론 가이드</a>.
         평가는 KOBEST에 더해 KMMLU(45과목)·HAE-RAE Bench로 다른 한국어 모델과 비교할 수 있습니다.
       </p>

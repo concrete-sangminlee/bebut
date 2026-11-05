@@ -162,41 +162,99 @@ function safeHref(url) {
   } catch (e) { return null; }
 }
 
-const INLINE = [
-  ["code", /`([^`\n]+)`/],
-  ["bold", /\*\*(?=\S)([^\n]*?\S)\*\*/],
-  ["italic", /\*(?=[^\s*])([^*\n]*?[^\s*])\*/],
-  ["link", /\[([^\]\n]+)\]\(([^)\s]+)\)/],
-  ["url", /https?:\/\/[^\s<>()\[\]]+[^\s<>()\[\].,!?;:'"]/],
-];
+const URL_STOP = /[\s<>()\[\]]/;
+const URL_TRAIL = /[.,!?;:'"]/;
 
+// 한 줄의 인라인 마크다운을 DOM 노드로. 앞에서부터 한 번만 훑는다.
+// 예전에는 매 단계 남은 텍스트 전체에 정규식 다섯 개를 다시 돌려 O(n²)이었고, 닫히지 않는
+// ** 가 많으면 O(n³)까지 갔다 (모델 출력 수만 자에서 화면이 수 초씩 멈췄다).
+// 규칙은 그때 정규식과 같다: 가장 왼쪽 매치, 같은 위치면 code → bold → italic → link → url.
+//   code   `내용`            bold  **내용** (안쪽 양끝이 공백이 아님)
+//   italic *내용* (* 없음)   link  [글자](주소)   url  http(s)://…
+// 닫는 기호 위치는 앞으로만 움직이는 캐시에 담아, 같은 구간을 여러 번 훑지 않는다.
 function inline(text) {
   const out = [];
-  while (text) {
-    let best = null;
-    for (const [kind, re] of INLINE) {
-      const m = re.exec(text);
-      if (m && (!best || m.index < best.m.index)) best = { kind, m };
-    }
-    if (!best) { out.push(document.createTextNode(text)); break; }
-    const { kind, m } = best;
-    if (m.index) out.push(document.createTextNode(text.slice(0, m.index)));
-    if (kind === "code") out.push(el("code", "", m[1]));
-    else if (kind === "bold") { const b = el("strong"); b.append(...inline(m[1])); out.push(b); }
-    else if (kind === "italic") { const i = el("em"); i.append(...inline(m[1])); out.push(i); }
-    else {
-      const label = kind === "link" ? m[1] : m[0];
-      const href = safeHref(kind === "link" ? m[2] : m[0]);
-      if (href) {
-        const a = el("a", "", label);
-        a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
-        out.push(a);
-      } else {
-        out.push(document.createTextNode(m[0]));  // 안전하지 않은 링크는 글자 그대로
+  let buf = "";
+  const pushText = () => { if (buf) { out.push(document.createTextNode(buf)); buf = ""; } };
+  const isSpace = (ch) => /\s/.test(ch);
+  let tick = -1, boldAt = -1, rbr = -1;   // 다음 ` · 유효한 닫는 ** · 다음 ] 위치 캐시
+  const parenCache = new Map();            // "](" 위치 → 닫는 ) 위치 또는 -1
+  const nextIndex = (cache, needle, from) => (cache >= from || cache === Infinity)
+    ? cache : ((i) => (i === -1 ? Infinity : i))(text.indexOf(needle, from));
+  const boldCloser = (from) => {           // from 이상에서 앞 글자가 공백이 아닌 첫 "**"
+    if (boldAt >= from || boldAt === Infinity) return boldAt;
+    let j = text.indexOf("**", Math.max(from, boldAt + 1));
+    while (j !== -1 && isSpace(text[j - 1])) j = text.indexOf("**", j + 1);
+    return (boldAt = j === -1 ? Infinity : j);
+  };
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "`") {
+      tick = nextIndex(tick, "`", i + 1);
+      if (tick !== Infinity && tick > i + 1) {
+        pushText(); out.push(el("code", "", text.slice(i + 1, tick)));
+        i = tick + 1; continue;
+      }
+    } else if (c === "*") {
+      if (text[i + 1] === "*" && i + 2 < text.length && !isSpace(text[i + 2])) {
+        const j = boldCloser(i + 3);
+        if (j !== Infinity) {
+          pushText(); const b = el("strong"); b.append(...inline(text.slice(i + 2, j))); out.push(b);
+          i = j + 2; continue;
+        }
+      }
+      const nx = text[i + 1];
+      if (nx !== undefined && nx !== "*" && !isSpace(nx)) {
+        const j = text.indexOf("*", i + 1);  // italic 안에는 *가 없으므로 바로 다음 *가 닫는 기호
+        if (j > i + 1 && !isSpace(text[j - 1])) {
+          pushText(); const em = el("em"); em.append(...inline(text.slice(i + 1, j))); out.push(em);
+          i = j + 1; continue;
+        }
+      }
+    } else if (c === "[") {
+      rbr = nextIndex(rbr, "]", i + 1);
+      if (rbr !== Infinity && rbr > i + 1 && text[rbr + 1] === "(") {
+        const k = rbr;
+        if (!parenCache.has(k)) {
+          let m = k + 2;
+          while (m < text.length && text[m] !== ")" && !isSpace(text[m])) m++;
+          parenCache.set(k, m < text.length && text[m] === ")" && m > k + 2 ? m : -1);
+        }
+        const m = parenCache.get(k);
+        if (m !== -1) {
+          pushText();
+          const label = text.slice(i + 1, k), href = safeHref(text.slice(k + 2, m));
+          if (href) {
+            const a = el("a", "", label);
+            a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+            out.push(a);
+          } else {
+            out.push(document.createTextNode(text.slice(i, m + 1)));  // 안전하지 않은 링크는 글자 그대로
+          }
+          i = m + 1; continue;
+        }
+      }
+    } else if ((c === "h" || c === "H") && /^https?:\/\//.test(text.slice(i, i + 8))) {
+      let e = i + (text[i + 4] === "s" ? 8 : 7);
+      const bodyStart = e;
+      while (e < text.length && !URL_STOP.test(text[e])) e++;
+      while (e > bodyStart && URL_TRAIL.test(text[e - 1])) e--;  // 문장 끝 마침표 등은 링크에서 뺀다
+      if (e - bodyStart >= 2) {
+        const href = safeHref(text.slice(i, e));
+        if (href) {
+          pushText();
+          const a = el("a", "", text.slice(i, e));
+          a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+          out.push(a);
+          i = e; continue;
+        }
       }
     }
-    text = text.slice(m.index + m[0].length);
+    buf += c;
+    i++;
   }
+  pushText();
   return out;
 }
 

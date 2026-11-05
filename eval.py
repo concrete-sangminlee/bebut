@@ -104,7 +104,6 @@ def choice_span(tok, context: str, choice: str) -> tuple[list[int], int]:
     return ids, start
 
 
-@torch.no_grad()
 def fit_span(ids, start, max_len):
     """모델 문맥(max_len)에 맞게 **앞에서** 자른다 (few-shot 예시·긴 지문부터 잘려 나간다).
 
@@ -119,6 +118,7 @@ def fit_span(ids, start, max_len):
     return ids[over:], start - over, True
 
 
+@torch.no_grad()
 def score_continuations(model, tok, pairs: list[tuple[str, str]], device, stats=None) -> list[float]:
     """(context, choice) 쌍들의 log P(choice | context)를 한 번의 forward로 계산한다.
 
@@ -289,7 +289,14 @@ def _aggregate(per):
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
-    out["by_config"] = {c: {k: r[k] for k in ("n", *names)} for c, r in per.items()}
+    out["by_config"] = {c: {k: r[k] for k in ("n", *names, "truncated")} for c, r in per.items()}
+    # 지표별 예측 분포 합계 — mc 형식에서 "늘 A" 같은 문자 쏠림을 잡으려면 꼭 있어야 한다
+    out["preds"] = {k: {} for k in names}
+    for r in per.values():
+        for k in names:
+            for choice, cnt in r["preds"][k].items():
+                out["preds"][k][choice] = out["preds"][k].get(choice, 0) + cnt
+    out["preds"] = {k: dict(sorted(v.items())) for k, v in out["preds"].items()}
     return out
 
 
@@ -299,12 +306,14 @@ def kmmlu_details(model, tok, shots, device, limit=None, fmt="cloze", subjects=N
 
     subjects = subjects or get_dataset_config_names("HAERAE-HUB/KMMLU")
     f = make_kmmlu_formatter(fmt)
-    per = {}
+    per, used = {}, []
     for sub in subjects:
         ds = load_dataset("HAERAE-HUB/KMMLU", sub)
         test = ds["test"] if limit is None else ds["test"].select(range(min(limit, len(ds["test"]))))
-        per[sub] = evaluate_choices(model, tok, f, ds["dev"], test, min(shots, len(ds["dev"])), device)
-    return {"format": fmt, "shots": shots, **_aggregate(per)}
+        k = min(shots, len(ds["dev"]))  # dev는 과목마다 5문항뿐 — 더 달라고 해도 5-shot이다
+        used.append(k)
+        per[sub] = evaluate_choices(model, tok, f, ds["dev"], test, k, device)
+    return {"format": fmt, "shots": min(used, default=shots), **_aggregate(per)}
 
 
 def haerae_details(model, tok, shots, device, limit=None, fmt="cloze", categories=None):
@@ -393,6 +402,8 @@ def main():
     ap.add_argument("--shots", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
+    if args.kobest and args.bench and args.kobest != args.bench:
+        ap.error("--kobest와 --bench는 하나만 (--bench가 KOBEST 과제도 받는다)")
 
     device = pick_device()
     device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"

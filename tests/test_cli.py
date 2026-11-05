@@ -54,3 +54,13 @@ def test_default_dtype(monkeypatch):
     assert sample.default_dtype("cpu") == torch.bfloat16
     monkeypatch.setattr(sample, "cpu_has_fast_bf16", lambda: False)
     assert sample.default_dtype("cpu") == torch.float32
+
+
+def test_bf16_detection_requires_real_bf16_instructions(monkeypatch):
+    """AVX-512만 있고 bf16 명령이 없는 CPU에선 fp32 — 흉내 bf16은 prefill이 몇 배 느리다."""
+    import sample
+
+    for avx512_bf16, amx, want in ((False, False, False), (True, False, True), (False, True, True)):
+        monkeypatch.setattr(torch.cpu, "_is_avx512_bf16_supported", lambda v=avx512_bf16: v, raising=False)
+        monkeypatch.setattr(torch.cpu, "_is_amx_tile_supported", lambda v=amx: v, raising=False)
+        assert sample.cpu_has_fast_bf16() is want
