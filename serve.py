@@ -48,6 +48,10 @@ class Engine:
     def __init__(self, model, tok, name="bebut"):
         self.model, self.tok, self.name = model, tok, name
         self.lock = threading.Lock()
+        # 요청 사이에 K·V를 재사용한다. 같은 대화를 이어가는 요청은 기록 전체를 다시 넣지만
+        # 앞부분이 지난 요청과 같으므로 그 부분은 계산하지 않는다. 다른 대화가 끼어들면
+        # 공통 접두부가 짧아질 뿐 결과는 같다 (락 안에서만 쓰므로 스레드 안전).
+        self.cache = model.new_cache()
         self.device = model.tok_emb.weight.device
         self.stop_ids = [tok.special_tokens["<|im_end|>"], tok.special_tokens["<|eos|>"]]
 
@@ -131,7 +135,8 @@ class Engine:
             for t in self.model.generate_stream(
                     torch.tensor([ids], device=self.device), p["max_tokens"], p["temperature"],
                     p["top_p"], top_k=p["top_k"], min_p=p["min_p"],
-                    repetition_penalty=p["repetition_penalty"], stop_ids=stop_ids, generator=gen):
+                    repetition_penalty=p["repetition_penalty"], stop_ids=stop_ids, generator=gen,
+                    cache=self.cache):
                 n += 1
                 tid = int(t)
                 if tid in stop_ids:

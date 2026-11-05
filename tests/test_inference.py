@@ -144,3 +144,44 @@ def test_repetition_penalty_exempts_stop_tokens(tiny_model):
     assert first(repetition_penalty=1e9) != top
     # 종료 토큰이면 벌점에서 빠져 그대로 1순위
     assert first(repetition_penalty=1e9, eos_id=top) == top
+
+
+def test_prefix_cache_reuse_matches_fresh_generation(tiny_model):
+    """멀티턴: 캐시를 재사용해도 매 턴 처음부터 prefill한 것과 같은 토큰이 나온다."""
+    g = torch.Generator().manual_seed(0)
+    cache = tiny_model.new_cache()
+    hist = torch.randint(0, 1000, (1, 10), generator=g)
+    prev_len = 0
+    for turn in range(4):
+        fresh = tiny_model.generate(hist, 8, temperature=0.0)
+        reused = tiny_model.generate(hist, 8, temperature=0.0, cache=cache)
+        assert torch.equal(fresh, reused), turn
+        if turn:  # 지난 턴의 프롬프트+생성(마지막 토큰 제외)이 그대로 재사용된다
+            assert cache.reused == prev_len - 1
+        prev_len = reused.shape[1]
+        hist = torch.cat([reused, torch.randint(0, 1000, (1, 5), generator=g)], dim=1)
+
+
+def test_prefix_cache_handles_divergence_and_repeats(tiny_model):
+    cache = tiny_model.new_cache()
+    a = torch.randint(0, 1000, (1, 20))
+    tiny_model.generate(a, 4, temperature=0.0, cache=cache)
+    b = a.clone()
+    b[0, 12] = (b[0, 12] + 1) % 1000  # 중간이 달라진 프롬프트 (오래된 턴을 잘라낸 경우 등)
+    assert torch.equal(tiny_model.generate(b, 6, temperature=0.0, cache=cache),
+                       tiny_model.generate(b, 6, temperature=0.0))
+    assert cache.reused == 12
+    # 같은 프롬프트를 다시 넣어도 (마지막 토큰은 다시 계산해야 하므로) 결과가 같다
+    assert torch.equal(tiny_model.generate(b, 6, temperature=0.0, cache=cache),
+                       tiny_model.generate(b, 6, temperature=0.0))
+    assert cache.reused == 19
+    # explicit 경로도 같은 결과
+    assert torch.equal(tiny_model.generate(b, 6, temperature=0.0, cache=cache, explicit=True),
+                       tiny_model.generate(b, 6, temperature=0.0))
+
+
+def test_prefix_cache_rejects_batches_and_small_caches(tiny_model):
+    with pytest.raises(ValueError):
+        tiny_model.generate(torch.randint(0, 1000, (2, 5)), 3, cache=tiny_model.new_cache())
+    with pytest.raises(ValueError):
+        tiny_model.generate(torch.randint(0, 1000, (1, 5)), 30, cache=tiny_model.new_cache(16))
