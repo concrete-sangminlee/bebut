@@ -2,5 +2,10 @@
 -r requirements.txt
 pytest
 ruff
-# 선택: HF 내보내기 검증 (tests/test_export_hf.py). export_hf.py 자체는 필요 없다
+# 선택: 내보내기 검증 (tests/test_export_hf.py, tests/test_export_gguf.py).
+# export_hf.py·export_gguf.py 자체는 필요 없다
 transformers
+gguf
+# llama.cpp 실제 추론 검증까지 하려면 (미리 빌드된 CPU wheel):
+#   pip install llama-cpp-python --only-binary=:all: \
+#       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu

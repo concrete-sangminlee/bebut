@@ -17,7 +17,7 @@
    pip install -r requirements-dev.txt
    python -m tokenizer.test_bpe
    python test_model.py
-   python -m pytest        # 추론·채점·데이터로더·학습/SFT e2e·서버·CLI·HF 내보내기
+   python -m pytest        # 추론·채점·데이터로더·학습/SFT/DPO e2e·서버·CLI·HF/GGUF 내보내기
    ruff check .
    ```
 

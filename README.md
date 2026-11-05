@@ -79,9 +79,18 @@ python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat --repetition-penalty
 # OpenAI 호환 API 서버 + 웹 채팅 UI (http://127.0.0.1:8000)
 python serve.py --ckpt checkpoints/sft_1b/latest.pt
 
-# HuggingFace 형식(Qwen3ForCausalLM 호환)으로 내보내기 → transformers · vLLM · llama.cpp
+# HuggingFace 형식(Qwen3ForCausalLM 호환)으로 내보내기 → transformers · vLLM
 python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
+
+# GGUF로 내보내기 → llama.cpp · Ollama · LM Studio (Q8_0이면 1.2B가 1.27GB)
+python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-sft.gguf --type q8_0
+cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 ```
+
+대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
+지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
+(CPU 4코어, dim 768/12층 1.26억 파라미터 모델, 기록 500토큰에서 263 → 74ms. 출력은 캐시 없이
+생성한 것과 토큰 단위로 같습니다).
 
 API 서버는 `/v1/chat/completions`(SSE 스트리밍 포함)·`/v1/completions`·`/v1/models`를
 제공해서 openai SDK, LangChain, Open WebUI 등이 `base_url`만 바꿔 붙습니다. 표준 라이브러리만
@@ -96,6 +105,32 @@ r = client.chat.completions.create(model="bebut", messages=[{"role": "user", "co
 HF 내보내기가 가능한 이유는 이 모델의 구성(RMSNorm · RoPE · GQA · QK-Norm · SwiGLU · tying)이
 Qwen3와 정확히 같아서입니다. 차이는 RoPE 차원 짝짓기 방식뿐이라 q/k 가중치 행 재배열로
 해결하고, `transformers`로 읽어 logits 일치(오차 ~5e-5)·토크나이저 일치를 CI에서 검증합니다.
+GGUF도 같은 재배열로 llama.cpp의 qwen3 아키텍처에 맞추고, **llama.cpp로 실제 추론해**
+logits(F32 오차 ~6e-5)와 토큰화(약 330개 문자열 전부 일치)를 CI에서 대조합니다.
+GGUF는 직접 씁니다 — llama.cpp의 변환 스크립트는 직접 학습한 토크나이저를 "알 수 없는
+pre-tokenizer"로 거부하기 때문입니다.
+
+## 다음 단계: 계산 보완 · DPO
+
+```bash
+# 계산 약점(0%) 보완 실험 — 풀이를 보여주는 산술 대화 2만 개를 SFT에 섞는다
+python -m data.make_math_sft --n 20000 --out data/math_sft.jsonl
+python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b --extra-data data/math_sft.jsonl
+python sft_eval.py --questions evals/math_heldout_ko.json --skip-kobest --models 최종=checkpoints/sft_1b/latest.pt
+
+# DPO — 같은 질문의 좋은 답·나쁜 답 쌍으로 선호를 학습 (prefs.jsonl은 직접 준비)
+python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.jsonl
+```
+
+- **산술 데이터**는 `47 + 38 = (40 + 30) + (7 + 8) = 70 + 15 = 85`처럼 자리별 풀이를 보여주고,
+  한국어 조사를 숫자 읽기에 맞춥니다(7**은**, 4**로**, 100**을**). 평가셋
+  `evals/math_heldout_ko.json`(200문항)은 학습 데이터와 **(연산, 피연산자) 조합이 겹치지 않게**
+  해시로 나눴고, 기존 held-out 계산 5문항의 조합은 학습에서 뺍니다. 추가 데이터는 학습 쪽에만
+  붙어 val 분할은 예전과 같습니다. 효과는 아직 측정하지 않았습니다.
+- **DPO**는 SFT 모델을 얼린 참조 모델로 두고 `-log σ(β·[(log π − log π_ref)(chosen) − (…)(rejected)])`를
+  최소화합니다. 시작 loss가 정확히 ln 2인지, 로그확률·gradient가 직접 계산한 값과 같은지,
+  실제 학습에서 선호가 생기는지를 테스트로 확인합니다. 데이터는 `{"prompt", "chosen", "rejected"}`,
+  멀티턴 `messages`, UltraFeedback-binarized 형식 JSONL 또는 `hf:<데이터셋>`.
 
 ## 무엇을 직접 만들었나
 
@@ -117,8 +152,11 @@ Qwen3와 정확히 같아서입니다. 차이는 RoPE 차원 짝짓기 방식뿐
   에폭 기반 셔플 ([train.py](train.py), [data/dataloader.py](data/dataloader.py))
 - **추론** — 미리 할당한 KV 캐시, GQA 디코드에서 K·V 복사 없는 SDPA, 스트리밍,
   top-k/min-p/반복 억제 ([model.py](model.py)), 증분 UTF-8 디코딩 ([chat.py](chat.py))
-- **서빙** — OpenAI 호환 HTTP 서버와 웹 UI를 표준 라이브러리로 ([serve.py](serve.py), [web/](web/))
-- **HF 내보내기** — safetensors 쓰기와 HF tokenizer.json 변환을 직접 구현 ([export_hf.py](export_hf.py))
+- **서빙** — OpenAI 호환 HTTP 서버와 웹 UI를 표준 라이브러리로, 요청 사이 KV 캐시 재사용
+  ([serve.py](serve.py), [web/](web/))
+- **내보내기** — safetensors·HF tokenizer.json ([export_hf.py](export_hf.py)), GGUF v3와
+  Q8_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현
+- **DPO** — 참조 모델 대비 선호 학습, 응답 위치만 청크 단위 lm_head ([dpo.py](dpo.py))
 - **평가** — perplexity, KOBEST(바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화,
   예측 쏠림 감지), 오염 검사 ([eval.py](eval.py), [evals/](evals/))
 
@@ -131,7 +169,7 @@ pip install -r requirements.txt
 # 0) 구현 검증 (GPU 불필요, 1분)
 python -m tokenizer.test_bpe      # BPE 왕복·압축률
 python test_model.py              # attention 일치, 초기 loss=ln(V), 오버핏, KV 캐시, 청크 CE
-pip install pytest && python -m pytest   # 추론·채점·재개·SFT·서버 e2e 등 (CPU 30초)
+pip install pytest && python -m pytest   # 추론·채점·재개·SFT·DPO·서버 e2e 등 (CPU 1분)
 
 # 1) 토크나이저 (약 20분, CPU 다중코어)
 python -m tokenizer.train_tokenizer --sample-mb 500 --vocab-size 65536
@@ -154,10 +192,13 @@ python final_eval.py
 python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
 python sft_eval.py
 
+# 6.5) (선택) 산술 보완 SFT, DPO — 위 "다음 단계" 참고
+
 # 7) 대화 · 서빙 · 내보내기
 python sample.py --ckpt checkpoints/sft_1b/latest.pt --chat
 python serve.py --ckpt checkpoints/sft_1b/latest.pt
 python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
+python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-sft.gguf
 ```
 
 작은 규모로 먼저 검증하려면 `--config debug_30m`(노트북) 또는 `mid_125m`(GPU 반나절)을
@@ -172,18 +213,20 @@ sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, �
 chat.py                  대화 템플릿 단일 정의 (학습·추론·평가 공유) + 스트리밍 디코더
 sample.py                생성 / --chat 스트리밍 대화
 serve.py, web/           OpenAI 호환 API 서버 + 웹 채팅 UI (표준 라이브러리)
+dpo.py                   DPO 선호 학습 (참조 모델 고정, 응답 토큰 로그확률)
 export_hf.py             HuggingFace(Qwen3) 형식 내보내기
+export_gguf.py           GGUF(llama.cpp·Ollama) 내보내기 + Modelfile
 eval.py                  perplexity + KOBEST (선택지 경계 정확 채점, 비조건부 정규화, 예측 쏠림 감지)
 final_eval.py            사전학습 최종 평가 (annealing 전/후 비교)
 sft_eval.py              SFT 평가 (자체 문항 + KOBEST)
 bench.py                 처리량·VRAM 벤치마크
 test_model.py            모델 검증 6종
-tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT e2e, 서버, CLI, HF 내보내기
+tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT·DPO e2e, 서버, CLI, HF·GGUF 내보내기
 
 tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64K vocab
-data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더
+data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더·산술 SFT 생성기
 configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
-evals/                   자체 평가 문항 + 학습데이터 오염 검사
+evals/                   자체 평가 문항(대화 36 · 산술 200) + 학습데이터 오염 검사
 docs/                    결과 정리, 운영 가이드, 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 ```
@@ -201,7 +244,8 @@ RTX 6000 Ada 48GB **한 장**으로 전부 했습니다. 벤치마크로 고른 
 
 ## 한계
 
-- **계산 불가** — 12+7을 14라고 답합니다. 이 규모·데이터로는 개선되지 않습니다.
+- **계산 불가** — 12+7을 14라고 답합니다. SFT 데이터에 정답이 붙은 산수가 거의 없던 탓으로 보고,
+  합성 산술 데이터로 보완하는 실험을 준비해 뒀습니다(위 "다음 단계" — 효과는 미측정).
 - **드문 사실은 지어냅니다** — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.
 - **BoolQ는 미확인** — 전 구간 무작위 수준·한쪽 쏠림으로 기록했지만, 이는 채점 버그
   (`"예"`의 채점 토큰 0개)로 설명됩니다. 고친 채점기로 재측정해야 실제 능력을 알 수 있습니다.
