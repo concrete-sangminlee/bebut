@@ -219,6 +219,7 @@ SFT 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그�
 |---|---|---|
 | 채점 버그를 고친 KOBEST, 특히 BoolQ의 실제 수준은? | `final_eval.py`, `sft_eval.py` 재실행 (§0) | 무작위 50% / 기존 †값 |
 | 다른 한국어 모델과 비교하면? | `final_eval.py`가 기록하는 **bits-per-byte** (토크나이저와 무관) | 같은 val 텍스트에서의 다른 모델 BPB |
+| 전문 지식·한국 문화 지식은? | `final_eval.py`의 **KMMLU**(45과목, 5-shot)·**HAE-RAE**(6범주) — 리더보드와 비교하려면 `--format mc` | 무작위 25%(KMMLU)·20~25%(HAE-RAE), 공개된 다른 모델 점수 |
 | 합성 산술 데이터로 계산이 되나? | `--extra-data data/math_sft.jsonl`로 SFT → `evals/math_heldout_ko.json` 200문항 | 기존 SFT 모델의 같은 200문항 |
 | DPO가 대화 품질을 올리나? | `dpo.py` → `sft_eval.py` (멈춤·반복·정답률) + KOBEST | SFT 최종 |
 | 반복 억제가 반복 루프를 줄이나? | `sft_eval.py --repetition-penalty 1.1` | 같은 모델, 1.0 |

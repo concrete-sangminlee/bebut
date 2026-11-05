@@ -186,3 +186,22 @@ def test_engine_without_prefix_cache(tiny_tok):
     ids = e.chat_prompt({"messages": [{"role": "user", "content": "안녕하세요"}]}, 8)
     assert e.cache is None
     assert e.complete(ids, p)[0] == Engine(model, tiny_tok, "x").complete(ids, p)[0]
+
+
+def test_usage_reports_cached_tokens_and_streams_usage_chunk(server):
+    """같은 대화를 이어 보내면 usage.prompt_tokens_details.cached_tokens에 재사용분이 잡힌다."""
+    msgs = [{"role": "user", "content": "대한민국의 수도는"}]
+    first = post(server, "/v1/chat/completions", {"messages": msgs, "temperature": 0, "max_tokens": 6})[1]
+    msgs += [{"role": "assistant", "content": first["choices"][0]["message"]["content"]},
+             {"role": "user", "content": "또 질문"}]
+    ev = sse_events(post(server, "/v1/chat/completions",
+                         {"messages": msgs, "temperature": 0, "max_tokens": 6, "stream": True,
+                          "stream_options": {"include_usage": True}})[1])
+    assert ev[-1] == "[DONE]" and ev[-2]["choices"] == []
+    u = ev[-2]["usage"]
+    assert u["prompt_tokens_details"]["cached_tokens"] > first["usage"]["prompt_tokens"] // 2
+    assert u["total_tokens"] == u["prompt_tokens"] + u["completion_tokens"]
+    # include_usage가 없으면 usage 청크를 보내지 않는다
+    ev2 = sse_events(post(server, "/v1/chat/completions", {**CHAT, "stream": True})[1])
+    assert all("usage" not in e for e in ev2[:-1])
+    assert request(server, "POST", "/v1/chat/completions", {**CHAT, "stream_options": 3})[0] == 400

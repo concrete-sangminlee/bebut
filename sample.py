@@ -46,8 +46,33 @@ def load_checkpoint(path):
         return torch.load(path, map_location="cpu", weights_only=False)
 
 
+def cpu_has_fast_bf16() -> bool:
+    """CPU가 bf16 행렬곱을 하드웨어로 지원하는지 (AVX512-BF16 / AMX).
+
+    지원하면 bf16이 fp32보다 빠르다 — 디코드는 매 토큰 가중치 전체를 읽는 메모리 대역폭
+    싸움이라 가중치가 절반 크기인 bf16이 유리하다 (1.2B 실측 fp32 8.2 → bf16 12.1 tok/s,
+    docs/INFERENCE.md). 지원하지 않는 CPU에서 bf16은 소프트웨어로 흉내 내 오히려 느리다.
+    """
+    # mkldnn의 _is_mkldnn_bf16_supported()는 AVX-512만 있어도(bf16 명령 없이 흉내) True라서
+    # Skylake·Ice Lake 같은 CPU에서 bf16을 고르게 된다 — 거기선 prefill이 fp32보다 3배 넘게 느리다.
+    # 실제 bf16 명령(AVX512-BF16) 또는 AMX 타일이 있는지를 직접 본다.
+    try:
+        avx512_bf16 = getattr(torch.cpu, "_is_avx512_bf16_supported", lambda: False)()
+        amx = getattr(torch.cpu, "_is_amx_tile_supported", lambda: False)()
+    except RuntimeError:
+        return False
+    return bool(avx512_bf16 or amx)
+
+
+def default_dtype(device: str) -> torch.dtype:
+    if device.startswith("cuda") or (device == "cpu" and cpu_has_fast_bf16()):
+        return torch.bfloat16
+    return torch.float32
+
+
 def load_model(ckpt_path, tokenizer_path, device, dtype=None):
-    """(model, tokenizer). dtype을 안 주면 CUDA는 bf16, 그 외는 fp32.
+    """(model, tokenizer). dtype을 안 주면 CUDA·bf16 지원 CPU는 bf16, 그 외는 fp32.
+    평가 스크립트는 점수가 dtype에 흔들리지 않게 fp32를 명시해서 부른다.
 
     CPU로 먼저 읽는 이유: 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)가
     들어 있다. 예전처럼 map_location=device로 읽으면 쓰지도 않을 그 10GB가 GPU에 올라갔다.
@@ -59,7 +84,7 @@ def load_model(ckpt_path, tokenizer_path, device, dtype=None):
     model.meta = {k: ckpt[k] for k in ("step", "config") if k in ckpt}
     del ckpt
     if dtype is None:
-        dtype = torch.bfloat16 if device.startswith("cuda") else torch.float32
+        dtype = default_dtype(device)
     model = model.to(device=device, dtype=dtype).eval()
     tok = ByteBPETokenizer.load(tokenizer_path)
     return model, tok

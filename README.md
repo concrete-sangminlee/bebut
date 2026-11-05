@@ -87,10 +87,14 @@ python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-
 cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 ```
 
+**CPU에서는 GGUF Q8_0 + llama.cpp가 가장 빠릅니다** — 1.2B 실측(4코어) 16.4 tok/s로 PyTorch fp32
+(8.2)의 2.0배입니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.1 tok/s)을 씁니다.
+측정 전체와 권장 구성은 [docs/INFERENCE.md](docs/INFERENCE.md)에 있습니다.
+
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(CPU 4코어, dim 768/12층 1.26억 파라미터 모델, 기록 500토큰에서 263 → 74ms). fp32에선 출력이
-캐시 없이 생성한 것과 토큰 단위로 같습니다. bf16(CUDA 기본)에선 반올림 차이로 드물게 달라질 수
+(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). fp32에선 출력이
+캐시 없이 생성한 것과 토큰 단위로 같습니다. bf16(CUDA·bf16 지원 CPU의 기본)에선 반올림 차이로 드물게 달라질 수
 있어, 완전한 재현이 필요하면 `--no-prefix-cache`로 끕니다.
 
 API 서버는 `/v1/chat/completions`(SSE 스트리밍 포함)·`/v1/completions`·`/v1/models`를
@@ -110,6 +114,20 @@ GGUF도 같은 재배열로 llama.cpp의 qwen3 아키텍처에 맞추고, **llam
 logits(F32 오차 ~6e-5)와 토큰화(약 330개 문자열 전부 일치)를 CI에서 대조합니다.
 GGUF는 직접 씁니다 — llama.cpp의 변환 스크립트는 직접 학습한 토크나이저를 "알 수 없는
 pre-tokenizer"로 거부하기 때문입니다.
+
+## 표준 한국어 벤치마크
+
+KOBEST에 더해 다른 한국어 모델과 나란히 놓을 수 있는 **KMMLU**(45과목 전문 지식, 과목별
+dev 5문항으로 5-shot)와 **HAE-RAE Bench 1.0**(한국 문화·역사·어휘·독해 6범주)을 잽니다.
+`final_eval.py`가 기본으로 함께 돌리고, 결과에는 과목별 점수와 과목 평균(macro)이 남습니다.
+
+- 형식 두 가지: `cloze`(기본 — 선택지 **내용**의 로그확률을 비교)와 `mc`(보기를 A~D로 나열하고
+  **문자**를 비교 — KMMLU 논문·리더보드와 같은 형식). 1B급 모델은 mc 형식에서 거의 무작위
+  수준이라 cloze가 신호를 더 남기고, 다른 모델의 공개 점수와 비교할 때는 mc를 씁니다.
+- 프롬프트가 문맥(2048)을 넘으면 앞쪽(few-shot 예시부터)을 잘라 채점하고 잘린 수를 기록합니다.
+- 실제 데이터(HF `HAERAE-HUB/KMMLU`, `HAERAE-HUB/HAE_RAE_BENCH_1.0`, `skt/kobest_v1`)에서
+  전 과목·전 범주가 로드·채점되는 것을 확인했고, CI는 같은 스키마의 가짜 행으로 검사합니다
+  (`BEBUT_NET_TESTS=1`이면 실제 데이터로).
 
 ## 다음 단계: 계산 보완 · DPO
 
@@ -158,8 +176,9 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
 - **내보내기** — safetensors·HF tokenizer.json ([export_hf.py](export_hf.py)), GGUF v3와
   Q8_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현
 - **DPO** — 참조 모델 대비 선호 학습, 응답 위치만 청크 단위 lm_head ([dpo.py](dpo.py))
-- **평가** — perplexity, KOBEST(바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화,
-  예측 쏠림 감지), 오염 검사 ([eval.py](eval.py), [evals/](evals/))
+- **평가** — perplexity·bits-per-byte, KOBEST·**KMMLU(45과목)·HAE-RAE Bench(6범주)**
+  (바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화, 예측 쏠림 감지, 긴 문맥 왼쪽 자르기),
+  오염 검사 ([eval.py](eval.py), [evals/](evals/))
 
 ## 전체 재현 절차
 
@@ -186,8 +205,9 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 ./run_training.sh base_1b data/shards_26b        # 죽으면 자동 재개
 ./watch_milestones.sh &                          # 스냅샷 생길 때마다 자동 평가
 
-# 5) 평가
+# 5) 평가 — perplexity·BPB + KOBEST + KMMLU(5-shot) + HAE-RAE
 python final_eval.py
+python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
 # 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
 python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
@@ -228,7 +248,7 @@ tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64
 data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더·산술 SFT 생성기
 configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
 evals/                   자체 평가 문항(대화 36 · 산술 200) + 학습데이터 오염 검사
-docs/                    결과 정리, 운영 가이드, 그래프
+docs/                    결과 정리, 운영 가이드, 추론 가이드(실측), 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 ```
 

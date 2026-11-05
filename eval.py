@@ -104,14 +104,34 @@ def choice_span(tok, context: str, choice: str) -> tuple[list[int], int]:
     return ids, start
 
 
+def fit_span(ids, start, max_len):
+    """모델 문맥(max_len)에 맞게 **앞에서** 자른다 (few-shot 예시·긴 지문부터 잘려 나간다).
+
+    예전엔 길이를 확인하지 않아, 5-shot 독해처럼 긴 프롬프트는 RoPE 테이블 밖으로 나가
+    알 수 없는 shape 오류로 죽었다. lm-eval-harness도 같은 방식으로 왼쪽을 자른다.
+    """
+    over = len(ids) - 1 - max_len
+    if over <= 0:
+        return ids, start, False
+    if start - over < 1:
+        raise ValueError(f"선택지만 {len(ids) - start}토큰이라 문맥 {max_len}에 들어가지 않는다")
+    return ids[over:], start - over, True
+
+
 @torch.no_grad()
-def score_continuations(model, tok, pairs: list[tuple[str, str]], device) -> list[float]:
+def score_continuations(model, tok, pairs: list[tuple[str, str]], device, stats=None) -> list[float]:
     """(context, choice) 쌍들의 log P(choice | context)를 한 번의 forward로 계산한다.
 
     오른쪽 패딩으로 묶고, lm_head는 채점에 필요한 위치에만 적용한다 —
     64K vocab의 전 위치 logits(문항당 수백 MB)를 만들 필요가 없다.
+    stats가 있으면 문맥을 잘라낸 시퀀스 수를 stats["truncated"]에 더한다.
     """
-    spans = [choice_span(tok, c, ch) for c, ch in pairs]
+    spans = []
+    for c, ch in pairs:
+        ids, start, cut = fit_span(*choice_span(tok, c, ch), model.cfg.max_seq_len)
+        spans.append((ids, start))
+        if stats is not None:
+            stats["truncated"] = stats.get("truncated", 0) + int(cut)
     L = max(len(ids) for ids, _ in spans) - 1
     x = torch.zeros(len(spans), L, dtype=torch.long)
     rows, pos, tgt = [], [], []
@@ -185,6 +205,7 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
         ctx, choices, label = fmt(train_rows[i])
         prefix += ctx + choices[label] + "\n\n"
 
+    stats = {"truncated": 0}
     uncond_cache: dict[str, float] = {}  # BoolQ의 '예/아니오'처럼 반복되는 선택지는 한 번만
     names = ("acc", "acc_len", "acc_calib")
     correct = dict.fromkeys(names, 0)
@@ -192,11 +213,11 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
     total = 0
     for row in test_rows:
         ctx, choices, label = fmt(row)
-        cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device)
+        cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
         if todo:
             for c, s in zip(todo, score_continuations(
-                    model, tok, [(UNCOND_CONTEXT, c) for c in todo], device)):
+                    model, tok, [(UNCOND_CONTEXT, c) for c in todo], device, stats)):
                 uncond_cache[c] = s
         scores = {
             "acc": cond,
@@ -209,7 +230,143 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
             correct[n] += int(p == label)
         total += 1
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
-            "preds": {n: dict(sorted(v.items())) for n, v in preds.items()}}
+            "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
+            "truncated": stats["truncated"]}
+
+
+# ---------------- KMMLU · HAE-RAE ----------------
+#
+# 형식 두 가지:
+#   cloze  "질문\n답: {선택지 내용}"의 로그확률을 비교 (기본). 작은 모델은 보기 목록을 읽고
+#          문자로 답하는 형식을 거의 못 해서(무작위 수준), 내용을 직접 채점해야 신호가 남는다.
+#   mc     보기를 A~D로 나열하고 "정답: {문자}"를 비교. KMMLU 논문·리더보드와 같은 형식이라
+#          다른 모델과 비교할 때 쓴다. 문자 선택지는 문항마다 같아 비조건부 점수가 캐시된다.
+
+LETTERS = "ABCDE"
+
+
+def _mc_context(question, options):
+    lines = "\n".join(f"{LETTERS[i]}. {o}" for i, o in enumerate(options))
+    return f"{question}\n{lines}\n정답: "
+
+
+def make_kmmlu_formatter(fmt="cloze"):
+    """KMMLU 행: question, A, B, C, D, answer(1~4)."""
+    def f(row):
+        options = [row[k] for k in "ABCD"]
+        label = int(row["answer"]) - 1
+        if not 0 <= label < 4:
+            raise ValueError(f"KMMLU answer 범위 밖: {row['answer']}")
+        if fmt == "mc":
+            return _mc_context(row["question"], options), list(LETTERS[:4]), label
+        return f"{row['question']}\n답: ", options, label
+    return f
+
+
+def _valid_option(v):
+    return isinstance(v, str) and v.strip() not in ("", "None", "nan")
+
+
+def make_haerae_formatter(fmt="cloze"):
+    """HAE-RAE Bench 1.0 행: question, a~e(일부 범주는 e가 비어 4지선다), answer('a'~'e')."""
+    def f(row):
+        keys = [k for k in "abcde" if _valid_option(row.get(k))]
+        ans = str(row["answer"]).strip().lower()
+        if ans not in keys:
+            raise ValueError(f"HAE-RAE 정답 {row['answer']!r}가 보기 {keys}에 없다")
+        options, label = [row[k] for k in keys], keys.index(ans)
+        if fmt == "mc":
+            return _mc_context(row["question"], options), list(LETTERS[: len(options)]), label
+        return f"{row['question']}\n답: ", options, label
+    return f
+
+
+def _aggregate(per):
+    """설정(과목·범주)별 결과 → micro(문항 가중)·macro(설정 평균) 합계."""
+    names = ("acc", "acc_len", "acc_calib")
+    n = sum(r["n"] for r in per.values())
+    out = {"n": n, "truncated": sum(r["truncated"] for r in per.values())}
+    for k in names:
+        out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
+        out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
+    out["by_config"] = {c: {k: r[k] for k in ("n", *names, "truncated")} for c, r in per.items()}
+    # 지표별 예측 분포 합계 — mc 형식에서 "늘 A" 같은 문자 쏠림을 잡으려면 꼭 있어야 한다
+    out["preds"] = {k: {} for k in names}
+    for r in per.values():
+        for k in names:
+            for choice, cnt in r["preds"][k].items():
+                out["preds"][k][choice] = out["preds"][k].get(choice, 0) + cnt
+    out["preds"] = {k: dict(sorted(v.items())) for k, v in out["preds"].items()}
+    return out
+
+
+def kmmlu_details(model, tok, shots, device, limit=None, fmt="cloze", subjects=None):
+    """과목마다 dev 앞쪽 shots개를 few-shot으로, test를 채점한다 (KMMLU 표준 구성)."""
+    from datasets import get_dataset_config_names, load_dataset
+
+    subjects = subjects or get_dataset_config_names("HAERAE-HUB/KMMLU")
+    f = make_kmmlu_formatter(fmt)
+    per, used = {}, []
+    for sub in subjects:
+        ds = load_dataset("HAERAE-HUB/KMMLU", sub)
+        test = ds["test"] if limit is None else ds["test"].select(range(min(limit, len(ds["test"]))))
+        k = min(shots, len(ds["dev"]))  # dev는 과목마다 5문항뿐 — 더 달라고 해도 5-shot이다
+        used.append(k)
+        per[sub] = evaluate_choices(model, tok, f, ds["dev"], test, k, device)
+    return {"format": fmt, "shots": min(used, default=shots), **_aggregate(per)}
+
+
+def haerae_details(model, tok, shots, device, limit=None, fmt="cloze", categories=None):
+    """HAE-RAE Bench는 test만 있다. few-shot 예시는 각 범주 test 앞쪽 shots개를 쓰고
+    채점에서는 뺀다 (같은 문항으로 예시와 채점을 겹치지 않게)."""
+    from datasets import get_dataset_config_names, load_dataset
+
+    categories = categories or get_dataset_config_names("HAERAE-HUB/HAE_RAE_BENCH_1.0")
+    f = make_haerae_formatter(fmt)
+    per = {}
+    for cat in categories:
+        rows = load_dataset("HAERAE-HUB/HAE_RAE_BENCH_1.0", cat, split="test")
+        shot_rows = rows.select(range(min(shots, len(rows))))
+        rest = rows.select(range(len(shot_rows), len(rows)))
+        if limit is not None:
+            rest = rest.select(range(min(limit, len(rest))))
+        per[cat] = evaluate_choices(model, tok, f, shot_rows, rest, len(shot_rows), device)
+    return {"format": fmt, "shots": shots, **_aggregate(per)}
+
+
+BENCHMARKS = ("copa", "boolq", "hellaswag", "kmmlu", "haerae")
+
+
+def benchmark_details(model, tok, name, shots, device, limit=None, fmt="cloze"):
+    """이름 하나로 어떤 벤치마크든 같은 형태의 결과 dict를 돌려준다."""
+    if name == "kmmlu":
+        return kmmlu_details(model, tok, shots, device, limit, fmt)
+    if name == "haerae":
+        return haerae_details(model, tok, shots, device, limit, fmt)
+    return kobest_details(model, tok, name, shots, device, limit)
+
+
+def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloze", limit=None):
+    """여러 벤치마크를 돌려 (kobest 결과, 그 밖의 결과)를 돌려주고 한 줄씩 출력한다.
+
+    KOBEST는 예전 평가와 비교할 수 있게 기존 2-shot을 그대로 쓰고, KMMLU·HAE-RAE는
+    표준인 5-shot을 쓴다. 결과 JSON에서 KOBEST는 예전처럼 "kobest" 키에 들어간다.
+    """
+    kob, other = {}, {}
+    for name in names:
+        r = benchmark_details(model, tok, name, kobest_shots if name in FORMATTERS else shots,
+                              device, limit, fmt)
+        (kob if name in FORMATTERS else other)[name] = r
+        line = (f"  {name:<10} calib {r['acc_calib']*100:5.1f}% | raw {r['acc']*100:5.1f}% "
+                f"| len {r['acc_len']*100:5.1f}% (n={r['n']}")
+        if name in FORMATTERS:
+            line += f") 예측분포 {r['preds']['acc_calib']}"
+        else:
+            line += f", {r['format']} {r['shots']}-shot) 과목 평균 calib {r['macro_acc_calib']*100:5.1f}%"
+        if r["truncated"]:
+            line += f" | 문맥 잘림 {r['truncated']}"
+        print(line, flush=True)
+    return kob, other
 
 
 def load_kobest(task, limit=None):
@@ -238,9 +395,15 @@ def main():
     ap.add_argument("--ppl", action="store_true")
     ap.add_argument("--shard-dir", default="data/shards_26b")
     ap.add_argument("--kobest", choices=list(FORMATTERS), default=None)
+    ap.add_argument("--bench", choices=BENCHMARKS, default=None,
+                    help="kobest 과제 또는 kmmlu(45과목)·haerae(6범주)")
+    ap.add_argument("--format", choices=["cloze", "mc"], default="cloze",
+                    help="kmmlu·haerae 채점 형식 (mc = 리더보드와 같은 보기·문자 형식)")
     ap.add_argument("--shots", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args()
+    if args.kobest and args.bench and args.kobest != args.bench:
+        ap.error("--kobest와 --bench는 하나만 (--bench가 KOBEST 과제도 받는다)")
 
     device = pick_device()
     device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"
@@ -255,6 +418,14 @@ def main():
         print(f"val bits-per-byte: {bits_per_byte(model, loader, 20, device_type, tok):.4f} "
               "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 
+    if args.bench in ("kmmlu", "haerae"):
+        r = benchmark_details(model, tok, args.bench, args.shots, device, args.limit, args.format)
+        print(f"{args.bench} ({args.format}, {args.shots}-shot, n={r['n']}, 잘린 문맥 {r['truncated']}): "
+              f"calib {r['acc_calib']*100:.1f}% | raw {r['acc']*100:.1f}% | len {r['acc_len']*100:.1f}% "
+              f"(과목 평균 calib {r['macro_acc_calib']*100:.1f}%)")
+        for c, v in r["by_config"].items():
+            print(f"  {c:<40} n={v['n']:<5} calib {v['acc_calib']*100:5.1f}%")
+    args.kobest = args.kobest or (args.bench if args.bench in FORMATTERS else None)
     if args.kobest:
         r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit)
         chance = {"copa": 0.5, "boolq": 0.5, "hellaswag": 0.25}[args.kobest]

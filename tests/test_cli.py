@@ -43,3 +43,24 @@ def test_chat_mode_commands_and_long_history(ckpt):
                "--max-tokens", "16", "--temperature", "0", "--verbose"], turns)
     assert out.count("모델:") == 7
     assert "(기록을 지웠습니다)" in out and "(시스템 프롬프트: 너는 비서다)" in out
+
+
+def test_default_dtype(monkeypatch):
+    import sample
+
+    assert sample.default_dtype("cuda") == torch.bfloat16
+    assert sample.default_dtype("mps") == torch.float32
+    monkeypatch.setattr(sample, "cpu_has_fast_bf16", lambda: True)
+    assert sample.default_dtype("cpu") == torch.bfloat16
+    monkeypatch.setattr(sample, "cpu_has_fast_bf16", lambda: False)
+    assert sample.default_dtype("cpu") == torch.float32
+
+
+def test_bf16_detection_requires_real_bf16_instructions(monkeypatch):
+    """AVX-512만 있고 bf16 명령이 없는 CPU에선 fp32 — 흉내 bf16은 prefill이 몇 배 느리다."""
+    import sample
+
+    for avx512_bf16, amx, want in ((False, False, False), (True, False, True), (False, True, True)):
+        monkeypatch.setattr(torch.cpu, "_is_avx512_bf16_supported", lambda v=avx512_bf16: v, raising=False)
+        monkeypatch.setattr(torch.cpu, "_is_amx_tile_supported", lambda v=amx: v, raising=False)
+        assert sample.cpu_has_fast_bf16() is want

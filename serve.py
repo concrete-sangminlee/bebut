@@ -51,7 +51,7 @@ class Engine:
         # 요청 사이에 K·V를 재사용한다. 같은 대화를 이어가는 요청은 기록 전체를 다시 넣지만
         # 앞부분이 지난 요청과 같으므로 그 부분은 계산하지 않는다. 다른 대화가 끼어들면
         # 공통 접두부가 짧아져 그만큼 다시 계산할 뿐이다 (락 안에서만 쓰므로 스레드 안전).
-        # fp32에선 결과가 캐시 없이 생성한 것과 같다. bf16(CUDA 기본)에선 반올림 차이로
+        # fp32에선 결과가 캐시 없이 생성한 것과 같다. bf16(CUDA·bf16 지원 CPU의 기본)에선 반올림 차이로
         # 같은 요청·같은 seed라도 직전 요청에 따라 드물게 다른 답이 나올 수 있어, 완전한
         # 재현이 필요하면 --no-prefix-cache로 끈다.
         self.cache = model.new_cache() if prefix_cache else None
@@ -122,7 +122,7 @@ class Engine:
     # ---------------- 생성 ----------------
 
     def stream(self, ids, p, chat=True):
-        """텍스트 조각을 yield 하고, 끝에 (finish_reason, 생성 토큰 수)를 반환한다.
+        """텍스트 조각을 yield 하고, 끝에 (finish_reason, 생성 토큰 수, 캐시 재사용 토큰 수)를 반환한다.
 
         stop 문자열은 토큰 경계와 무관하게 나타나므로, 가장 긴 stop 길이-1 글자만큼은
         출력하지 않고 들고 있다가 stop이 아님이 확인되면 내보낸다.
@@ -153,11 +153,13 @@ class Engine:
                 if len(buf) > hold:
                     yield buf[: len(buf) - hold]
                     buf = buf[len(buf) - hold:]
+            # 재사용한 프롬프트 토큰 수는 락 안에서 읽는다 (다음 요청이 캐시를 바꾸기 전에)
+            cached = self.cache.reused if self.cache is not None else 0
         if finish == "length":
             buf += dec.flush()
         if buf:
             yield buf
-        return finish, n
+        return finish, n, cached
 
     def complete(self, ids, p, chat=True):
         it = self.stream(ids, p, chat)
@@ -167,6 +169,13 @@ class Engine:
                 pieces.append(next(it))
             except StopIteration as e:
                 return "".join(pieces), *e.value
+
+
+def usage(prompt_tokens, completion_tokens, cached_tokens):
+    """OpenAI 형식 usage. cached_tokens = 프리픽스 캐시로 다시 계산하지 않은 프롬프트 토큰."""
+    return {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "prompt_tokens_details": {"cached_tokens": cached_tokens}}
 
 
 def make_handler(engine: Engine, verbose=False):
@@ -259,6 +268,8 @@ def make_handler(engine: Engine, verbose=False):
                 req = json.loads(raw or b"{}")
                 if not isinstance(req, dict):
                     raise BadRequest("JSON 객체를 보내야 합니다")
+                if not isinstance(req.get("stream_options") or {}, dict):
+                    raise BadRequest("stream_options는 객체여야 합니다")
                 p = engine.sampling(req)
                 ids = engine.chat_prompt(req, p["max_tokens"]) if chat else engine.text_prompt(req)
             except (json.JSONDecodeError, UnicodeDecodeError):
@@ -283,7 +294,7 @@ def make_handler(engine: Engine, verbose=False):
                         try:
                             piece = next(it)
                         except StopIteration as e:
-                            finish, _ = e.value
+                            finish, n_out, cached = e.value
                             break
                         choice = ({"index": 0, "delta": {"content": piece}, "finish_reason": None}
                                   if chat else {"index": 0, "text": piece, "finish_reason": None})
@@ -292,18 +303,21 @@ def make_handler(engine: Engine, verbose=False):
                     last = ({"index": 0, "delta": {}, "finish_reason": finish} if chat
                             else {"index": 0, "text": "", "finish_reason": finish})
                     self._sse({**base, "object": obj + (".chunk" if chat else ""), "choices": [last]})
+                    if (req.get("stream_options") or {}).get("include_usage"):
+                        # OpenAI와 같이: choices가 빈 마지막 청크에 usage를 싣는다
+                        self._sse({**base, "object": obj + (".chunk" if chat else ""), "choices": [],
+                                   "usage": usage(len(ids), n_out, cached)})
                     self._sse("[DONE]")
                 except (BrokenPipeError, ConnectionResetError):
                     it.close()  # 클라이언트가 끊으면 생성을 멈추고 락을 푼다
                 return
 
-            text, finish, n_out = engine.complete(ids, p, chat)
+            text, finish, n_out, cached = engine.complete(ids, p, chat)
             choice = ({"index": 0, "message": {"role": "assistant", "content": text},
                        "finish_reason": finish} if chat
                       else {"index": 0, "text": text, "finish_reason": finish})
-            self._json(200, {**base, "object": obj, "choices": [choice], "usage": {
-                "prompt_tokens": len(ids), "completion_tokens": n_out,
-                "total_tokens": len(ids) + n_out}})
+            self._json(200, {**base, "object": obj, "choices": [choice],
+                             "usage": usage(len(ids), n_out, cached)})
 
     return Handler
 

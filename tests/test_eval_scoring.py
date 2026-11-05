@@ -110,3 +110,19 @@ def test_bits_per_byte_matches_manual(tmp_path, tiny_tok):
                 nats += n
                 nbytes += len(tiny_tok.vocab[t])
     assert abs(got - nats / (math.log(2) * nbytes)) < 1e-3
+
+
+
+def test_scoring_never_builds_autograd_graph(tiny_tok):
+    """채점은 no_grad여야 한다. 데코레이터가 다른 함수로 밀려나 autograd가 켜진 채 돌았던 적이
+    있다 — 1.2B에선 KMMLU 한 문항에 활성값이 ~28GB 쌓여 OOM이 난다 (작은 모델 테스트로는 안 보인다)."""
+    from eval import evaluate_choices
+
+    model = make_model(vocab_size=1024)
+    seen = []
+    model.lm_head.register_forward_hook(lambda m, i, o: seen.append(o.requires_grad))
+    rows = [{"premise": "비가 왔다.", "question": "결과", "alternative_1": "땅이 젖었다.",
+             "alternative_2": "학교에 갑니다.", "label": 0}] * 2
+    evaluate_choices(model, tiny_tok, FORMATTERS["copa"], rows, rows, 1, "cpu")
+    score_continuations(model, tiny_tok, [("답: ", "예")], "cpu")
+    assert seen and not any(seen)
