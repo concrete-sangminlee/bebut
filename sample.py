@@ -107,7 +107,7 @@ def chat_loop(model, tok, args):
     budget = max(model.cfg.max_seq_len // 2, model.cfg.max_seq_len - args.max_tokens)
     messages = [{"role": "system", "content": args.system}] if args.system else []
     # 턴을 넘겨 K·V를 재사용한다 — 매 턴 기록 전체를 다시 계산하지 않고 새 부분만 prefill
-    cache = model.new_cache()
+    cache = None if args.no_prefix_cache else model.new_cache()
     print("대화 모드 — 빈 입력 또는 /exit 종료, /reset 기록 삭제, /system <내용> 시스템 프롬프트")
     while True:
         try:
@@ -133,8 +133,9 @@ def chat_loop(model, tok, args):
         t0 = time.time()
         reply, n = stream(model, tok, ids, args, stop, cache=cache)
         if args.verbose:
+            reused = cache.reused if cache is not None else 0
             print(f"  [{n}토큰, {n / max(1e-6, time.time() - t0):.1f} tok/s, 문맥 {len(ids)}토큰 "
-                  f"중 {cache.reused}토큰 캐시 재사용]")
+                  f"중 {reused}토큰 캐시 재사용]")
         messages.append({"role": "assistant", "content": reply.strip()})
 
 
@@ -148,6 +149,8 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--dtype", choices=["auto", "fp32", "bf16"], default="auto")
     ap.add_argument("--verbose", action="store_true", help="토큰 수·속도 표시")
+    ap.add_argument("--no-prefix-cache", action="store_true",
+                    help="턴 사이 KV 캐시 재사용 끄기 (bf16에서 완전한 재현이 필요할 때)")
     add_sampling_args(ap)
     args = ap.parse_args()
 

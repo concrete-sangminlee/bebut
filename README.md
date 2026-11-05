@@ -89,8 +89,9 @@ cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(CPU 4코어, dim 768/12층 1.26억 파라미터 모델, 기록 500토큰에서 263 → 74ms. 출력은 캐시 없이
-생성한 것과 토큰 단위로 같습니다).
+(CPU 4코어, dim 768/12층 1.26억 파라미터 모델, 기록 500토큰에서 263 → 74ms). fp32에선 출력이
+캐시 없이 생성한 것과 토큰 단위로 같습니다. bf16(CUDA 기본)에선 반올림 차이로 드물게 달라질 수
+있어, 완전한 재현이 필요하면 `--no-prefix-cache`로 끕니다.
 
 API 서버는 `/v1/chat/completions`(SSE 스트리밍 포함)·`/v1/completions`·`/v1/models`를
 제공해서 openai SDK, LangChain, Open WebUI 등이 `base_url`만 바꿔 붙습니다. 표준 라이브러리만
@@ -127,7 +128,7 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
   `evals/math_heldout_ko.json`(200문항)은 학습 데이터와 **(연산, 피연산자) 조합이 겹치지 않게**
   해시로 나눴고, 기존 held-out 계산 5문항의 조합은 학습에서 뺍니다. 추가 데이터는 학습 쪽에만
   붙어 val 분할은 예전과 같습니다. 효과는 아직 측정하지 않았습니다.
-- **DPO**는 SFT 모델을 얼린 참조 모델로 두고 `-log σ(β·[(log π − log π_ref)(chosen) − (…)(rejected)])`를
+- **DPO**는 SFT 모델을 참조 모델로 두고(참조 로그확률은 학습 전에 한 번 계산) `-log σ(β·[(log π − log π_ref)(chosen) − (…)(rejected)])`를
   최소화합니다. 시작 loss가 정확히 ln 2인지, 로그확률·gradient가 직접 계산한 값과 같은지,
   실제 학습에서 선호가 생기는지를 테스트로 확인합니다. 데이터는 `{"prompt", "chosen", "rejected"}`,
   멀티턴 `messages`, UltraFeedback-binarized 형식 JSONL 또는 `hf:<데이터셋>`.

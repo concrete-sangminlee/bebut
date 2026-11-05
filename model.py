@@ -105,6 +105,8 @@ class KVCache:
         캐시 뒤쪽의 낡은 값은 지우지 않는다: pos 이후는 다음 update가 덮어쓰고,
         읽을 때도 [:pos+T]까지만 본다.
         """
+        if not tokens:  # 그대로 두면 pos가 -1이 되어 이후 호출이 전부 망가진다
+            raise ValueError("빈 프롬프트로는 캐시를 재사용할 수 없다")
         k = 0
         for a, b in zip(self.tokens, tokens):
             if a != b:
@@ -384,9 +386,13 @@ class GPT(nn.Module):
           예전 구현은 shape 오류로 죽었다.
         - cache(new_cache()로 만든 것, 배치 1)를 넘기면 지난 호출과 공통인 접두부는 다시
           계산하지 않는다. 멀티턴 대화에서 기록 전체를 매 턴 prefill하던 비용이 사라진다.
+          fp32에선 결과가 캐시 없이 생성한 것과 토큰 단위로 같다. bf16에선 디코드 중에
+          계산한 K·V와 prefill로 계산한 K·V의 반올림이 달라 드물게 다른 토큰이 나올 수 있다.
         """
         B, T = idx.shape
         L = self.cfg.max_seq_len
+        if T == 0:
+            raise ValueError("빈 프롬프트 — 첫 토큰을 예측할 문맥이 없다")
         if T > L:
             raise ValueError(f"프롬프트 {T}토큰이 max_seq_len {L}보다 길다 — 앞부분을 잘라서 넣을 것")
         n_new = min(max_new_tokens, L - T)

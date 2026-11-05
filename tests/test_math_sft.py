@@ -2,7 +2,10 @@
 
 import re
 
-from data.make_math_sft import generate, heldout_pairs, josa
+import pytest
+
+from data.make_math_sft import OPS, canon, generate, heldout_pairs, josa
+from sft_eval import correct
 
 
 def test_josa_follows_sino_korean_reading():
@@ -44,7 +47,8 @@ def test_every_solution_is_arithmetically_correct():
 
 def test_no_overlap_between_train_and_test_and_original_heldout():
     train, test = generate(5000, 200, seed=2)
-    key = lambda r: (r["meta"]["op"], r["meta"]["a"], r["meta"]["b"])  # noqa: E731
+    # 덧셈·곱셈은 순서를 바꾼 문제(9 × 3 / 3 × 9)도 같은 문제로 본다
+    key = lambda r: canon(r["meta"]["op"], r["meta"]["a"], r["meta"]["b"])  # noqa: E731
     train_keys = {key(r) for r in train}
     test_keys = {key(r) for r in test}
     assert not train_keys & test_keys
@@ -57,3 +61,35 @@ def test_no_overlap_between_train_and_test_and_original_heldout():
 def test_deterministic():
     assert generate(200, 20, seed=5) == generate(200, 20, seed=5)
     assert generate(200, 20, seed=5) != generate(200, 20, seed=6)
+
+
+def test_commuted_problems_do_not_leak():
+    train, test = generate(20000, 200, seed=0)
+    seen = {(r["meta"]["op"], r["meta"]["a"], r["meta"]["b"]) for r in train}
+    for t in test:
+        m = t["meta"]
+        if m["op"] in ("add", "mul"):
+            assert (m["op"], m["b"], m["a"]) not in seen, m
+
+
+def test_test_items_are_not_echo_trivial_and_scored_on_last_number():
+    _, test = generate(2000, 200, seed=0)
+    for t in test:
+        m = t["meta"]
+        assert OPS[m["op"]](m["a"], m["b"]) not in (m["a"], m["b"])  # 11 × 1, 15 − 0 같은 문항 없음
+        assert t["match"] == "last_number"
+        assert not correct(t["q"], t["a"], t["match"])  # 질문을 따라 말하기만 해서는 못 맞힌다
+
+
+def test_last_number_scoring():
+    assert correct("47 + 38 = (40 + 30) + (7 + 8) = 70 + 15 = 85\n따라서 답은 85입니다.", ["85"], "last_number")
+    assert not correct("85가 아니라 84입니다.", ["85"], "last_number")  # 중간에 정답이 있어도 마지막이 틀리면 오답
+    assert correct("답은 1,000입니다.", ["1000"], "last_number")
+    assert not correct("모르겠습니다.", ["3"], "last_number")
+
+
+def test_heldout_path_does_not_depend_on_cwd(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert len(heldout_pairs()) == 5
+    with pytest.raises(FileNotFoundError):  # 파일이 없으면 조용히 제외 목록을 비우지 않는다
+        heldout_pairs(str(tmp_path / "없음.json"))

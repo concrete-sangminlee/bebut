@@ -6,12 +6,17 @@ SFT는 정답 예시를 따라 하게 할 뿐 '어떤 답이 더 나은가'를 �
 
     L = -log σ( β · [ (log π(y_c|x) - log π_ref(y_c|x)) - (log π(y_r|x) - log π_ref(y_r|x)) ] )
 
-π는 학습 중인 모델, π_ref는 시작점(SFT 모델)을 얼린 복사본이다. 참조 모델과의 차이로
+π는 학습 중인 모델, π_ref는 시작점(SFT 모델)을 얼린 것이다. 참조 모델과의 차이로
 재기 때문에, 모델이 원래 잘 쓰던 표현을 망가뜨리지 않으면서 상대적인 선호만 옮긴다.
 β가 클수록 참조 모델에서 덜 벗어난다.
 
+참조 모델은 메모리에 두지 않는다. π_ref는 학습 내내 바뀌지 않으므로, 학습 전에 정책
+모델(= 시작점) 자신으로 모든 쌍의 log π_ref를 한 번 계산해 저장한다. 참조 모델을 따로
+bf16으로 들고 있으면(GPU 2.4GB) 정책(fp32 가중치 + autocast)과 연산 정밀도가 달라
+시작부터 쌍마다 0.04~0.5 nats씩 어긋나고, 그게 모든 쌍에 고정된 가짜 보상으로 들어간다.
+
 - log π(y|x)는 응답 토큰의 로그확률 합. 문맥(질문) 토큰은 세지 않는다.
-- chosen과 rejected를 한 배치로 묶어 모델마다 forward 한 번.
+- chosen과 rejected를 한 배치로 묶어 forward 한 번.
 - 64K vocab이라 응답 위치의 hidden만 골라 lm_head를 청크 단위로 (gradient checkpointing).
 - 시작 시 정책 = 참조이므로 loss는 정확히 ln 2 ≈ 0.693 — 학습이 제대로 도는지 첫 확인점.
 
@@ -27,7 +32,6 @@ SFT는 정답 예시를 따라 하게 할 뿐 '어떤 답이 더 나은가'를 �
 """
 
 import argparse
-import copy
 import importlib
 import json
 import math
@@ -164,25 +168,45 @@ def dpo_loss(pol_c, pol_r, ref_c, ref_r, beta, label_smoothing=0.0):
                          "margin": (rc - rr).mean().item(), "accuracy": (rc > rr).float().mean().item()}
 
 
-def pair_logprobs(policy, ref, batch, pad_id, device, device_type):
+def policy_logprobs(policy, batch, pad_id, device, device_type):
+    """(chosen 로그확률, rejected 로그확률), 각 (B,)."""
     x, y = collate_pairs(batch, pad_id)
     x, y = x.to(device), y.to(device)
-    B = len(batch)
-    with torch.no_grad(), torch.autocast(device_type=device_type, dtype=torch.bfloat16):
-        r = sequence_logprobs(ref, x, y)
     with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
         p = sequence_logprobs(policy, x, y)
-    return p[:B], p[B:], r[:B], r[B:]
+    return p[: len(batch)], p[len(batch):]
 
 
 @torch.no_grad()
-def evaluate(policy, ref, pairs, pad_id, B, device, device_type, beta, ls):
+def reference_logprobs(model, pairs, pad_id, B, device, device_type) -> torch.Tensor:
+    """학습 시작 전 모델로 모든 쌍의 log π_ref를 계산 → (N, 2) [chosen, rejected].
+
+    학습 때와 같은 함수·같은 autocast로 계산하므로 step 0의 정책과 정확히 같은 값이다.
+    """
+    model.eval()
+    out = []
+    for i in range(0, len(pairs), B):
+        c, r = policy_logprobs(model, pairs[i : i + B], pad_id, device, device_type)
+        out.append(torch.stack([c, r], dim=1).float().cpu())
+    model.train()
+    return torch.cat(out) if out else torch.zeros(0, 2)
+
+
+def pair_loss(policy, batch, refs, pad_id, device, device_type, beta, ls):
+    """refs: (B, 2) 미리 계산한 참조 로그확률."""
+    c, r = policy_logprobs(policy, batch, pad_id, device, device_type)
+    refs = refs.to(c.device)
+    return dpo_loss(c, r, refs[:, 0], refs[:, 1], beta, ls)
+
+
+@torch.no_grad()
+def evaluate(policy, pairs, refs, pad_id, B, device, device_type, beta, ls):
     policy.eval()
     tot = {"loss": 0.0, "reward_chosen": 0.0, "reward_rejected": 0.0, "margin": 0.0, "accuracy": 0.0}
     n = 0
     for i in range(0, len(pairs), B):
         batch = pairs[i : i + B]
-        loss, st = dpo_loss(*pair_logprobs(policy, ref, batch, pad_id, device, device_type), beta, ls)
+        loss, st = pair_loss(policy, batch, refs[i : i + B], pad_id, device, device_type, beta, ls)
         k = len(batch)
         tot["loss"] += loss.item() * k
         for key, v in st.items():
@@ -226,10 +250,6 @@ def main():
     policy.load_state_dict(ckpt["model"])
     print(f"시작 모델: {args.base} (step {ckpt.get('step')})")
     del ckpt
-    # 참조 모델은 얼린 복사본. 학습하지 않으니 GPU에선 bf16으로 둬 메모리를 아낀다
-    ref = copy.deepcopy(policy).to(device=device,
-                                   dtype=torch.bfloat16 if device == "cuda" else torch.float32)
-    ref.eval().requires_grad_(False)
     policy = policy.to(device)
     opt = torch.optim.AdamW(policy.param_groups(tcfg["weight_decay"]), lr=tcfg["max_lr"],
                             betas=(0.9, 0.95), fused=(device == "cuda"))
@@ -245,7 +265,11 @@ def main():
     os.makedirs(ckpt_dir, exist_ok=True)
     print(f"총 {max_steps} steps | β={beta} | step당 {B * accum}쌍")
 
-    v0 = evaluate(policy, ref, val, pad_id, B, device, device_type, beta, ls)
+    t_ref = time.time()
+    train_ref = reference_logprobs(policy, train, pad_id, B, device, device_type)
+    val_ref = reference_logprobs(policy, val, pad_id, B, device, device_type)
+    print(f"참조 로그확률 계산 {len(train) + len(val)}쌍, {time.time() - t_ref:.0f}초", flush=True)
+    v0 = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
     print(f"시작 val: loss {v0['loss']:.4f} (정책=참조라 ln2={math.log(2):.4f}여야 한다)", flush=True)
 
     step, t0 = 0, time.time()
@@ -265,8 +289,8 @@ def main():
             agg = {"loss": 0.0, "accuracy": 0.0, "margin": 0.0}
             for a in range(accum):
                 idx = order[(s * accum + a) * B : (s * accum + a + 1) * B]
-                loss, st = dpo_loss(*pair_logprobs(policy, ref, [train[i] for i in idx], pad_id,
-                                                   device, device_type), beta, ls)
+                loss, st = pair_loss(policy, [train[i] for i in idx], train_ref[idx], pad_id,
+                                     device, device_type, beta, ls)
                 (loss / accum).backward()  # 쌍 수가 같으니 단순 평균이 곧 쌍 평균
                 agg["loss"] += loss.item() / accum
                 agg["accuracy"] += st["accuracy"] / accum
@@ -281,7 +305,7 @@ def main():
             if step > 0 and step % tcfg["save_every"] == 0:
                 save(policy, step, args.config, os.path.join(ckpt_dir, "latest.pt"))
             step += 1
-        v = evaluate(policy, ref, val, pad_id, B, device, device_type, beta, ls)
+        v = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
         print(f"=== epoch {epoch} 종료 | val loss {v['loss']:.4f} | 보상 정확도 {v['accuracy']:.3f} "
               f"| 마진 {v['margin']:.3f} (chosen {v['reward_chosen']:+.3f} / "
               f"rejected {v['reward_rejected']:+.3f}) ===", flush=True)

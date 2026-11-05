@@ -177,3 +177,12 @@ def test_engine_cache_reuse_matches_fresh_engine(tiny_tok):
             assert got == ask(Engine(model, tiny_tok, "fresh"), conv), (turn, conv[0]["content"])
             conv += [{"role": "assistant", "content": got}, {"role": "user", "content": f"질문 {turn}"}]
     assert shared.cache.reused > 0
+
+
+def test_engine_without_prefix_cache(tiny_tok):
+    model = make_model(vocab_size=1024, max_seq_len=256)
+    e = Engine(model, tiny_tok, "tiny", prefix_cache=False)
+    p = e.sampling({"temperature": 0, "max_tokens": 8})
+    ids = e.chat_prompt({"messages": [{"role": "user", "content": "안녕하세요"}]}, 8)
+    assert e.cache is None
+    assert e.complete(ids, p)[0] == Engine(model, tiny_tok, "x").complete(ids, p)[0]

@@ -113,3 +113,23 @@ def test_dpo_e2e_learns_preference(tmp_path, tiny_tok):
     assert float(final[0]) < 0.2 and float(final[1]) == 1.0
     out = tmp_path / "out" / "ci_tiny_dpo"
     assert {"epoch0.pt", "epoch2.pt", "latest.pt"} <= set(os.listdir(out))
+
+
+def test_precomputed_reference_gives_exact_ln2_under_autocast():
+    """참조 로그확률을 시작 모델 자신으로(같은 autocast로) 미리 계산하면 시작 loss가 정확히 ln 2다.
+
+    예전처럼 참조 모델을 bf16 가중치로 따로 두면 정책(fp32 + autocast)과 값이 어긋났다.
+    """
+    from dpo import evaluate, reference_logprobs
+
+    torch.manual_seed(0)
+    model = make_model(vocab_size=1000, dim=128, n_layers=3)
+    g = torch.Generator().manual_seed(1)
+    pairs = [(torch.randint(0, 1000, (int(n),), generator=g).tolist(),
+              torch.randint(0, 1000, (6,), generator=g).tolist(),
+              torch.randint(0, 1000, (9,), generator=g).tolist())
+             for n in torch.randint(3, 20, (10,), generator=g)]
+    refs = reference_logprobs(model, pairs, 0, 4, "cpu", "cpu")
+    assert refs.shape == (10, 2)
+    v = evaluate(model, pairs, refs, 0, 4, "cpu", "cpu", beta=0.1, ls=0.0)
+    assert abs(v["loss"] - math.log(2)) < 1e-6 and abs(v["margin"]) < 1e-6

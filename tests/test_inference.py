@@ -185,3 +185,16 @@ def test_prefix_cache_rejects_batches_and_small_caches(tiny_model):
         tiny_model.generate(torch.randint(0, 1000, (2, 5)), 3, cache=tiny_model.new_cache())
     with pytest.raises(ValueError):
         tiny_model.generate(torch.randint(0, 1000, (1, 5)), 30, cache=tiny_model.new_cache(16))
+
+
+def test_empty_prompt_is_rejected_and_cache_survives(tiny_model):
+    cache = tiny_model.new_cache()
+    tiny_model.generate(torch.randint(0, 1000, (1, 6)), 3, temperature=0.0, cache=cache)
+    with pytest.raises(ValueError):
+        tiny_model.generate(torch.zeros(1, 0, dtype=torch.long), 3, cache=cache)
+    with pytest.raises(ValueError):
+        cache.reuse([])
+    assert cache.pos == len(cache.tokens) > 0  # 실패한 호출이 캐시 상태를 망가뜨리지 않는다
+    p = torch.randint(0, 1000, (1, 8))
+    assert torch.equal(tiny_model.generate(p, 4, temperature=0.0, cache=cache),
+                       tiny_model.generate(p, 4, temperature=0.0))

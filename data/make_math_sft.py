@@ -10,7 +10,8 @@ SFT 평가에서 계산은 0%였다 ("6 곱하기 7은 28입니다"). 사전학�
 
 **평가 오염 방지가 핵심이다.** (연산, a, b) 조합을 해시로 학습/평가 칸에 나눠 같은 문제가
 양쪽에 나오지 않게 하고, 기존 held-out 문항(evals/heldout_ko.json의 '계산')의 조합은
-학습에서 뺀다. 문장 표현만 바꾼 같은 문제도 오염이므로 숫자 조합 단위로 나눈다.
+학습에서 뺀다. 문장 표현만 바꾼 같은 문제도 오염이므로 숫자 조합 단위로 나누고, 덧셈·곱셈은
+순서를 바꾼 문제(9 × 3 / 3 × 9)도 같은 칸에 넣는다. 평가 문항은 마지막 숫자로 채점한다.
 
 한국어 조사(은/는, 을/를, 와/과, 으로/로)는 숫자를 한자어로 읽었을 때 마지막 음절의
 받침으로 정한다: 7(칠)은, 4(사)로, 100(백)을, 8(팔)로 — ㄹ 받침은 '으로'가 아니라 '로'.
@@ -25,8 +26,12 @@ SFT 평가에서 계산은 0%였다 ("6 곱하기 7은 28입니다"). 사전학�
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
+
+HELDOUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "evals", "heldout_ko.json")
 
 # 한자어 수사의 마지막 음절과 받침 (None = 받침 없음)
 _DIGIT_SYLLABLE = {0: "영", 1: "일", 2: "이", 3: "삼", 4: "사", 5: "오", 6: "육", 7: "칠", 8: "팔", 9: "구"}
@@ -154,29 +159,41 @@ def sample_operands(op, rng):
     return b * rng.randint(1, 30), b
 
 
+def canon(op, a, b):
+    """덧셈·곱셈은 교환법칙이 있어 9 × 3과 3 × 9는 같은 문제다 — 같은 열쇠로 묶는다.
+
+    순서 그대로 나누면 평가의 9 × 3이 학습에 3 × 9로 들어가 평가가 오염된다
+    (기본 시드에서 구구단 평가 문항 14개 중 11개가 그랬다).
+    """
+    return (op, min(a, b), max(a, b)) if op in ("add", "mul") else (op, a, b)
+
+
 def is_test_pair(op, a, b, test_ratio) -> bool:
     """(연산, a, b) → 평가 칸 여부. 해시라서 생성 순서·시드와 무관하게 늘 같은 칸이다."""
+    op, a, b = canon(op, a, b)
     h = hashlib.blake2b(f"{op}:{a}:{b}".encode(), digest_size=8).digest()
     return int.from_bytes(h, "little") % 10_000 < test_ratio * 10_000
 
 
-def heldout_pairs(path="evals/heldout_ko.json"):
-    """기존 대화 평가의 계산 문항이 쓰는 (연산, a, b) — 학습에서 반드시 뺀다."""
+def heldout_pairs(path=HELDOUT):
+    """기존 대화 평가의 계산 문항이 쓰는 (연산, a, b) — 학습에서 반드시 뺀다.
+
+    경로는 이 파일 기준이다. 실행 위치에 따라 파일을 못 찾아 제외 목록이 조용히 비면
+    오염된 데이터가 만들어지므로, 없으면 실패한다.
+    """
     pats = [("add", r"(\d+)\s*더하기\s*(\d+)"), ("sub", r"(\d+)에서\s*(\d+)\S*\s*빼"),
             ("mul", r"(\d+)\s*곱하기\s*(\d+)"), ("div", r"(\d+)\S*\s*(\d+)\S*\s*나누"),
             ("sub", r"(\d+)개 있는데\s*(\d+)개를 먹")]
     out = set()
-    try:
-        qs = json.load(open(path, encoding="utf-8"))
-    except FileNotFoundError:
-        return out
+    with open(path, encoding="utf-8") as f:
+        qs = json.load(f)
     for q in qs:
         if q.get("type") != "계산":
             continue
         for op, pat in pats:
             m = re.search(pat, q["q"])
             if m:
-                out.add((op, int(m.group(1)), int(m.group(2))))
+                out.add(canon(op, int(m.group(1)), int(m.group(2))))
     return out
 
 
@@ -211,12 +228,16 @@ def generate(n, test_n, seed=0, test_ratio=0.1, word_ratio=0.25):
         op = rng.choice(ops)
         a, b = sample_operands(op, rng)
         word = rng.random() < word_ratio and (op != "mul" or b < 10)
-        key = (op, a, b)
+        key = canon(op, a, b)
         if is_test_pair(op, a, b, test_ratio) or key in banned:
-            if len(test) < test_n and key not in seen_test and key not in banned:
+            res = OPS[op](a, b)
+            # 답이 피연산자와 같으면(11 × 1, 15 − 0) 질문을 따라 말하기만 해도 맞는다 — 평가에서 뺀다
+            trivial = res in (a, b)
+            if len(test) < test_n and key not in seen_test and key not in banned and not trivial:
                 seen_test.add(key)
                 q, _, res = make_item(op, a, b, rng, word)
-                test.append({"type": "계산", "q": q, "a": [str(res)],
+                # 풀이 중간의 숫자가 우연히 정답과 같을 수 있어 '마지막 숫자'로 채점한다
+                test.append({"type": "계산", "q": q, "a": [str(res)], "match": "last_number",
                              "meta": {"op": op, "a": a, "b": b, "word": word}})
             continue
         if len(train) < n:

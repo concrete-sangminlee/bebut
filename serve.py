@@ -45,13 +45,16 @@ class BadRequest(Exception):
 class Engine:
     """모델 + 토크나이저 + 직렬화 락. HTTP와 무관한 생성 로직을 담아 테스트하기 쉽게 한다."""
 
-    def __init__(self, model, tok, name="bebut"):
+    def __init__(self, model, tok, name="bebut", prefix_cache=True):
         self.model, self.tok, self.name = model, tok, name
         self.lock = threading.Lock()
         # 요청 사이에 K·V를 재사용한다. 같은 대화를 이어가는 요청은 기록 전체를 다시 넣지만
         # 앞부분이 지난 요청과 같으므로 그 부분은 계산하지 않는다. 다른 대화가 끼어들면
-        # 공통 접두부가 짧아질 뿐 결과는 같다 (락 안에서만 쓰므로 스레드 안전).
-        self.cache = model.new_cache()
+        # 공통 접두부가 짧아져 그만큼 다시 계산할 뿐이다 (락 안에서만 쓰므로 스레드 안전).
+        # fp32에선 결과가 캐시 없이 생성한 것과 같다. bf16(CUDA 기본)에선 반올림 차이로
+        # 같은 요청·같은 seed라도 직전 요청에 따라 드물게 다른 답이 나올 수 있어, 완전한
+        # 재현이 필요하면 --no-prefix-cache로 끈다.
+        self.cache = model.new_cache() if prefix_cache else None
         self.device = model.tok_emb.weight.device
         self.stop_ids = [tok.special_tokens["<|im_end|>"], tok.special_tokens["<|eos|>"]]
 
@@ -320,13 +323,16 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--dtype", choices=["auto", "fp32", "bf16"], default="auto")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--no-prefix-cache", action="store_true",
+                    help="요청 사이 KV 캐시 재사용 끄기 (bf16에서 seed 재현이 꼭 필요할 때)")
     args = ap.parse_args()
 
     device = pick_device(args.device)
     dtype = {"auto": None, "fp32": torch.float32, "bf16": torch.bfloat16}[args.dtype]
     model, tok = load_model(args.ckpt, args.tokenizer, device, dtype)
     name = args.name or f"bebut-{model.meta.get('config', 'model')}"
-    srv = make_server(Engine(model, tok, name), args.host, args.port, args.verbose)
+    srv = make_server(Engine(model, tok, name, prefix_cache=not args.no_prefix_cache),
+                      args.host, args.port, args.verbose)
     print(f"{name} 서빙 중 — http://{args.host}:{args.port}  (device {device}, "
           f"{next(model.parameters()).dtype}) | Ctrl+C 종료", flush=True)
     if args.host not in ("127.0.0.1", "localhost"):
