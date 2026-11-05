@@ -80,3 +80,33 @@ def test_evaluate_choices_end_to_end(tiny_tok):
         assert sum(r["preds"][name].values()) == 6
     # 선택지가 같으면 예측도 문항과 무관하게 같다 → 라벨이 반반이면 정확히 50%
     assert r["acc"] == 0.5
+
+
+def test_bits_per_byte_matches_manual(tmp_path, tiny_tok):
+    """BPB = special 제외 토큰의 손실 합(비트) / 그 토큰들의 원문 바이트 수."""
+    import math
+
+    import numpy as np
+
+    from data.dataloader import ShardedDataLoader
+    from eval import bits_per_byte
+
+    ids = tiny_tok.encode("안녕하세요. 오늘 날씨가 정말 좋네요. " * 30)
+    eos = tiny_tok.special_tokens["<|eos|>"]
+    stream = np.array((ids + [eos]) * 3, dtype=np.uint16)
+    stream.tofile(tmp_path / "val_000000.bin")
+    model = make_model(vocab_size=1024)
+    loader = ShardedDataLoader(str(tmp_path), "val", 2, 32, seed=1, mode="epoch")
+    got = bits_per_byte(model, loader, 3, "cpu", tiny_tok, chunk=7)
+
+    loader.step = 0
+    nats = nbytes = 0.0
+    for _ in range(3):
+        x, y = loader.next_batch()
+        logits, _ = model(x, targets=y)
+        nll = F.cross_entropy(logits.reshape(-1, logits.size(-1)).float(), y.reshape(-1), reduction="none")
+        for t, n in zip(y.reshape(-1).tolist(), nll.tolist()):
+            if t not in tiny_tok.id_to_special:
+                nats += n
+                nbytes += len(tiny_tok.vocab[t])
+    assert abs(got - nats / (math.log(2) * nbytes)) < 1e-3

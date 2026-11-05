@@ -17,6 +17,7 @@ KOBEST(BoolQ·COPA·HellaSwag): 베이스 모델은 지시를 못 따르므로 l
 """
 
 import argparse
+import math
 
 import torch
 import torch.nn.functional as F
@@ -36,6 +37,40 @@ def perplexity(model, loader, iters, device_type, loss_chunk=8192):
         losses.append(loss.item())
     mean = sum(losses) / len(losses)
     return torch.exp(torch.tensor(mean)).item(), mean
+
+
+def token_byte_lengths(tok, vocab_size: int, device) -> torch.Tensor:
+    """토큰 id → UTF-8 바이트 수. special token은 0 (텍스트가 아니라서 BPB에서 뺀다)."""
+    lens = torch.zeros(vocab_size, dtype=torch.long)
+    for i, b in tok.vocab.items():
+        if i < vocab_size:
+            lens[i] = len(b)
+    return lens.to(device)
+
+
+@torch.no_grad()
+def bits_per_byte(model, loader, iters, device_type, tok, chunk=8192):
+    """val shard의 bits-per-byte = 전체 손실(비트) / 원문 바이트 수.
+
+    perplexity는 '토큰당' 지표라 토크나이저가 다르면 비교할 수 없다. 64K vocab은 토큰
+    하나에 한국어 2~3글자를 담으므로 32K vocab 모델보다 perplexity가 높게 나오는 게
+    정상이다. 바이트당으로 바꾸면 어휘 크기·분할 방식과 무관해져 다른 모델과 나란히 놓을
+    수 있다. special token(<|eos|> 등)은 바이트가 없으므로 분자·분모에서 모두 뺀다.
+    """
+    nbytes = token_byte_lengths(tok, model.cfg.vocab_size, next(model.parameters()).device)
+    total_nats, total_bytes = 0.0, 0
+    for _ in range(iters):
+        x, y = loader.next_batch()
+        with torch.autocast(device_type=device_type, dtype=torch.bfloat16):
+            h = model.hidden_states(x)
+        h, y = h.reshape(-1, h.size(-1)), y.reshape(-1)
+        for i in range(0, h.size(0), chunk):  # 64K vocab logits를 한 번에 만들지 않는다
+            logits = model.lm_head(h[i:i + chunk]).float()
+            nll = F.cross_entropy(logits, y[i:i + chunk], reduction="none")
+            b = nbytes[y[i:i + chunk]]
+            total_nats += float((nll * (b > 0)).sum())
+            total_bytes += int(b.sum())
+    return total_nats / (math.log(2) * max(1, total_bytes))
 
 
 def choice_span(tok, context: str, choice: str) -> tuple[list[int], int]:
@@ -216,6 +251,9 @@ def main():
                                    seed=123, device=device)
         ppl, loss = perplexity(model, loader, 20, device_type)
         print(f"val perplexity: {ppl:.2f} (loss {loss:.4f})")
+        loader.step = 0  # 같은 배치로
+        print(f"val bits-per-byte: {bits_per_byte(model, loader, 20, device_type, tok):.4f} "
+              "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 
     if args.kobest:
         r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit)
