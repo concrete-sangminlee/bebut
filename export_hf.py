@@ -355,6 +355,15 @@ python convert_hf_to_gguf.py <이 디렉토리> --outfile bebut.gguf
 # ---------------- 내보내기 ----------------
 
 
+def is_chat_config(config_name: str) -> bool:
+    """SFT·DPO를 거친 체크포인트면 대화 모델(eos = <|im_end|>)로 본다.
+
+    설정 이름의 "_" 조각 중 하나가 sft나 dpo로 시작하면 대화 모델 — sft_1b, dpo_1b,
+    ci_tiny_sft, ci_tiny_dpo 모두 해당한다 (startswith만 보면 ci_tiny_dpo를 놓친다).
+    """
+    return any(part.startswith(("sft", "dpo")) for part in str(config_name).split("_"))
+
+
 def export(state_dict: dict[str, torch.Tensor], model_cfg, tokenizer: ByteBPETokenizer | None,
            out_dir: str, dtype: str = "bf16", chat: bool = True, source: str | None = None):
     """state_dict를 HF 디렉토리로 내보낸다. tokenizer=None이면 가중치·config만 쓴다."""
@@ -407,13 +416,13 @@ def main():
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--dtype", choices=list(DTYPES), default="bf16")
     ap.add_argument("--chat", action=argparse.BooleanOptionalAction, default=None,
-                    help="eos를 <|im_end|>로 둘지 (기본: SFT 체크포인트면 켬)")
+                    help="eos를 <|im_end|>로 둘지 (기본: SFT·DPO 체크포인트면 켬)")
     args = ap.parse_args()
 
     # CPU로 읽는다 — 사전학습 체크포인트엔 옵티마이저 상태도 들어 있어 GPU에 올릴 이유가 없다
     ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     conf = importlib.import_module(f"configs.{ckpt['config']}")
-    chat = args.chat if args.chat is not None else str(ckpt["config"]).startswith("sft")
+    chat = args.chat if args.chat is not None else is_chat_config(ckpt["config"])
     tok = ByteBPETokenizer.load(args.tokenizer)
     export(ckpt["model"], conf.model, tok, args.out, args.dtype, chat,
            source=f"{args.ckpt} (config {ckpt['config']}, step {ckpt.get('step')})")
