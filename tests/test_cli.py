@@ -43,3 +43,14 @@ def test_chat_mode_commands_and_long_history(ckpt):
                "--max-tokens", "16", "--temperature", "0", "--verbose"], turns)
     assert out.count("모델:") == 7
     assert "(기록을 지웠습니다)" in out and "(시스템 프롬프트: 너는 비서다)" in out
+
+
+def test_default_dtype(monkeypatch):
+    import sample
+
+    assert sample.default_dtype("cuda") == torch.bfloat16
+    assert sample.default_dtype("mps") == torch.float32
+    monkeypatch.setattr(sample, "cpu_has_fast_bf16", lambda: True)
+    assert sample.default_dtype("cpu") == torch.bfloat16
+    monkeypatch.setattr(sample, "cpu_has_fast_bf16", lambda: False)
+    assert sample.default_dtype("cpu") == torch.float32

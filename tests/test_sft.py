@@ -86,7 +86,7 @@ def test_sft_e2e_saves_epoch_checkpoints(tmp_path, tiny_tok):
     from chat import encode_prompt
     from sample import load_model
 
-    model, _ = load_model(str(out / "latest.pt"), str(tok_path), "cpu")
+    model, _ = load_model(str(out / "latest.pt"), str(tok_path), "cpu", torch.float32)  # 기계와 무관하게
     ids = encode_prompt(tiny_tok, [{"role": "user", "content": "인사해줘"}])
     end = tiny_tok.special_tokens["<|im_end|>"]
     gen = model.generate(torch.tensor([ids]), 30, temperature=0.0, eos_id=end)[0, len(ids):].tolist()
