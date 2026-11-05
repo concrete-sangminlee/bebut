@@ -18,7 +18,8 @@ KMMLU_ROW = {"question": "포도당의 특성이 아닌 것은?", "answer": 4, "
              "C": "헥소오스", "D": "퓨라노오스", "Category": "Biology", "Human Accuracy": 0.5915}
 HAERAE_5 = {"question": "청동기 시대에 커다란 돌을 쌓아 만든 족장의 무덤을 무엇이라고 하는가?",
             "a": "고분", "b": "고인돌", "c": "돌무덤", "d": "돌기와집", "e": "굴식돌방", "answer": "b", "split": "HI"}
-HAERAE_4 = {"question": "<빈칸>에 들어갈 가장 알맞은 것을 고르십시오.  ### 참고: 외국에 나가려면 <빈칸>이 반드시 있어야 해요.",
+HAERAE_4 = {"question": ("<빈칸>에 들어갈 가장 알맞은 것을 고르십시오.  "
+                         "### 참고: 외국에 나가려면 <빈칸>이 반드시 있어야 해요."),
             "a": "도장", "b": "명함", "c": "여권", "d": "통장", "e": None, "answer": "c", "split": "RC"}
 
 
@@ -35,8 +36,9 @@ def test_kmmlu_formatter_cloze_and_mc():
 def test_haerae_formatter_handles_four_and_five_options():
     _, ch, label = ev.make_haerae_formatter()(HAERAE_5)
     assert len(ch) == 5 and ch[label] == "고인돌"
-    for empty in (None, float("nan"), "None", ""):  # 4지선다 범주에선 e가 이렇게 비어 있다
-        _, ch, label = ev.make_haerae_formatter("mc")({**HAERAE_4, "e": empty if not isinstance(empty, float) else "nan"})
+    # 4지선다 범주에선 e가 이렇게 비어 있다 (실제 데이터의 독해 범주는 float NaN)
+    for empty in (None, float("nan"), "None", ""):
+        _, ch, label = ev.make_haerae_formatter("mc")({**HAERAE_4, "e": empty})
         assert ch == ["A", "B", "C", "D"] and label == 2
     with pytest.raises(ValueError):
         ev.make_haerae_formatter()({**HAERAE_4, "answer": "e"})
