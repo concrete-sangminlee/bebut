@@ -5,6 +5,8 @@ annealing 직전(step 19,200)과 최종(latest) 모델을 같은 조건으로 �
     BPB는 토크나이저와 무관해 다른 한국어 모델과 비교할 수 있다.
     annealing 이후 모델은 고품질 분포로 옮겨갔으므로 한쪽만 재면 오해한다.
   - KOBEST: 문항 제한 없이 전체 테스트셋 (마일스톤은 150문항이라 노이즈가 컸다).
+  - KMMLU(45과목, 5-shot)·HAE-RAE Bench(6범주): 다른 한국어 모델과 비교하기 위한 표준
+    벤치마크. 기본 cloze 형식, --format mc면 리더보드와 같은 보기·문자 형식.
     acc_calib·acc·acc_len과 지표별 예측 분포를 모두 기록 — 한쪽으로 쏠리면 점수는
     라벨 분포일 뿐이다.
   - 사실 정확도: 같은 프롬프트 10회 추출 빈도.
@@ -20,7 +22,7 @@ import time
 import torch
 
 from data.dataloader import ShardedDataLoader
-from eval import FORMATTERS, bits_per_byte, kobest_details, perplexity
+from eval import BENCHMARKS, bits_per_byte, perplexity, run_benchmarks
 from sample import load_model, pick_device
 
 DEFAULT_CKPTS = ["annealing 직전=checkpoints/base_1b/step_019200.pt",
@@ -34,7 +36,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpts", nargs="+", default=DEFAULT_CKPTS, help="라벨=체크포인트 경로")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
-    ap.add_argument("--shots", type=int, default=2)
+    ap.add_argument("--shots", type=int, default=2, help="KOBEST few-shot (예전 평가와 같은 2)")
+    ap.add_argument("--benches", nargs="+", choices=BENCHMARKS, default=list(BENCHMARKS))
+    ap.add_argument("--bench-shots", type=int, default=5, help="KMMLU·HAE-RAE few-shot")
+    ap.add_argument("--format", choices=["cloze", "mc"], default="cloze")
+    ap.add_argument("--limit", type=int, default=None, help="과제(과목)별 문항 수 제한")
     ap.add_argument("--skip-ppl", action="store_true", help="shard가 없는 환경에서")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="logs/final_eval.json")
@@ -48,7 +54,7 @@ def main():
         t0 = time.time()
         model, tok = load_model(path, args.tokenizer, device, torch.float32)
         step = model.meta.get("step")
-        r = {"step": step, "ppl": {}, "bpb": {}, "kobest": {}, "facts": {}}
+        r = {"step": step, "ppl": {}, "bpb": {}, "kobest": {}, "bench": {}, "facts": {}}
         print(f"\n===== {label} (step {step}) =====", flush=True)
 
         if not args.skip_ppl:
@@ -62,12 +68,8 @@ def main():
                 r["bpb"][vname] = round(bpb, 4)
                 print(f"  perplexity [{vname}]: {ppl:.2f} | bits-per-byte {bpb:.4f}", flush=True)
 
-        for task in FORMATTERS:
-            k = kobest_details(model, tok, task, args.shots, device)
-            r["kobest"][task] = k
-            print(f"  {task:<10} calib {k['acc_calib']*100:5.1f}% | raw {k['acc']*100:5.1f}% "
-                  f"| len {k['acc_len']*100:5.1f}% (n={k['n']}) "
-                  f"예측분포 {k['preds']['acc_calib']}", flush=True)
+        r["kobest"], r["bench"] = run_benchmarks(model, tok, args.benches, device, args.shots,
+                                                 args.bench_shots, args.format, args.limit)
 
         gen = torch.Generator(device=device).manual_seed(0)
         for prompt, answers in PROBES:

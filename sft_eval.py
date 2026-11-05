@@ -11,6 +11,7 @@
   python sft_eval.py                                   # 기본 세 모델 → logs/sft_eval.json
   python sft_eval.py --models 최종=checkpoints/sft_1b/latest.pt --repetition-penalty 1.1
   python sft_eval.py --skip-kobest                     # 대화 평가만 (빠름)
+  python sft_eval.py --benches copa boolq hellaswag kmmlu haerae   # 표준 벤치마크까지
 """
 import argparse
 import json
@@ -20,7 +21,7 @@ import time
 import torch
 
 from chat import encode_prompt
-from eval import FORMATTERS, kobest_details
+from eval import BENCHMARKS, run_benchmarks
 from sample import load_model, pick_device
 
 DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
@@ -90,7 +91,12 @@ def main():
     ap.add_argument("--max-new", type=int, default=150)
     ap.add_argument("--repetition-penalty", type=float, default=1.0)
     ap.add_argument("--shots", type=int, default=2)
-    ap.add_argument("--skip-kobest", action="store_true")
+    ap.add_argument("--skip-kobest", action="store_true", help="벤치마크를 모두 건너뛴다")
+    ap.add_argument("--benches", nargs="+", choices=BENCHMARKS, default=["copa", "boolq", "hellaswag"],
+                    help="kmmlu·haerae도 넣을 수 있다")
+    ap.add_argument("--bench-shots", type=int, default=5)
+    ap.add_argument("--format", choices=["cloze", "mc"], default="cloze")
+    ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="logs/sft_eval.json")
     ap.add_argument("--answers-out", default="logs/sft_eval_answers.md")
@@ -114,14 +120,10 @@ def main():
             answers_md.append(f"- **[{row['type']}] {row['q']}** {mark}\n"
                               f"  > {row['answer'][:300].replace(chr(10), ' ')}\n")
 
-        r["kobest"] = {}
+        r["kobest"], r["bench"] = {}, {}
         if not args.skip_kobest:
-            for task in FORMATTERS:
-                k = kobest_details(model, tok, task, args.shots, device)
-                r["kobest"][task] = k
-                print(f"  {task:<10} calib {k['acc_calib']*100:5.1f}% | raw {k['acc']*100:5.1f}% "
-                      f"| len {k['acc_len']*100:5.1f}% (n={k['n']}) "
-                      f"예측분포 {k['preds']['acc_calib']}", flush=True)
+            r["kobest"], r["bench"] = run_benchmarks(model, tok, args.benches, device, args.shots,
+                                                     args.bench_shots, args.format, args.limit)
 
         r["seconds"] = round(time.time() - t0)
         results[label] = r
