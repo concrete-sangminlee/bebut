@@ -93,6 +93,28 @@ class KVCache:
         self.k: list[torch.Tensor | None] = [None] * n_layers
         self.v: list[torch.Tensor | None] = [None] * n_layers
         self.pos = 0
+        self.tokens: list[int] = []  # 캐시에 들어 있는 토큰 (배치 1일 때만 추적)
+        self.reused = 0  # 마지막 reuse()에서 재사용한 토큰 수 (진단용)
+
+    def reuse(self, tokens: list[int]) -> int:
+        """새 프롬프트와 캐시의 공통 접두부만 남기고, 재사용할 토큰 수를 돌려준다.
+
+        대화는 턴마다 '지금까지의 기록 + 새 질문'을 통째로 다시 넣는다. 앞부분은 지난 턴에
+        이미 계산한 K·V와 같으므로 그대로 두고 달라진 지점부터만 prefill하면 된다.
+        마지막 토큰은 항상 다시 넣는다 — 다음 토큰의 logits가 그 위치의 출력이라서.
+        캐시 뒤쪽의 낡은 값은 지우지 않는다: pos 이후는 다음 update가 덮어쓰고,
+        읽을 때도 [:pos+T]까지만 본다.
+        """
+        if not tokens:  # 그대로 두면 pos가 -1이 되어 이후 호출이 전부 망가진다
+            raise ValueError("빈 프롬프트로는 캐시를 재사용할 수 없다")
+        k = 0
+        for a, b in zip(self.tokens, tokens):
+            if a != b:
+                break
+            k += 1
+        k = min(k, len(tokens) - 1, self.pos)
+        self.pos, self.tokens, self.reused = k, self.tokens[:k], k
+        return k
 
     def update(self, layer: int, k: torch.Tensor, v: torch.Tensor):
         """새 K·V(B, Hkv, T, hd)를 기록하고, 지금까지의 전체 K·V 뷰를 돌려준다."""
@@ -348,19 +370,29 @@ class GPT(nn.Module):
         cache.advance(idx.shape[1])
         return self.lm_head(self.final_norm(x[:, -1]))
 
+    def new_cache(self, max_len: int | None = None) -> KVCache:
+        """턴을 넘겨 재사용할 캐시 (generate_stream(cache=...)에 넘긴다). 기본 크기는 max_seq_len."""
+        return KVCache(len(self.blocks), max_len or self.cfg.max_seq_len)
+
     @torch.no_grad()
     def generate_stream(self, idx, max_new_tokens, temperature=0.8, top_p=0.95, *,
                         top_k=0, min_p=0.0, repetition_penalty=1.0, stop_ids=None,
-                        generator=None, explicit=False):
+                        generator=None, explicit=False, cache: KVCache | None = None):
         """토큰을 하나씩 내놓는 생성기. 매 step (B, 1) 텐서를 yield 한다.
 
         - 모든 행이 stop_ids 중 하나를 낸 뒤 멈춘다. 먼저 끝난 행은 이후 stop_ids[0]으로
           채워진다 (이전 구현은 끝난 행에도 계속 아무 토큰이나 생성했다).
         - 전체 길이는 max_seq_len을 넘지 않는다. RoPE 테이블이 거기까지라서, 넘으면
           예전 구현은 shape 오류로 죽었다.
+        - cache(new_cache()로 만든 것, 배치 1)를 넘기면 지난 호출과 공통인 접두부는 다시
+          계산하지 않는다. 멀티턴 대화에서 기록 전체를 매 턴 prefill하던 비용이 사라진다.
+          fp32에선 결과가 캐시 없이 생성한 것과 토큰 단위로 같다. bf16에선 디코드 중에
+          계산한 K·V와 prefill로 계산한 K·V의 반올림이 달라 드물게 다른 토큰이 나올 수 있다.
         """
         B, T = idx.shape
         L = self.cfg.max_seq_len
+        if T == 0:
+            raise ValueError("빈 프롬프트 — 첫 토큰을 예측할 문맥이 없다")
         if T > L:
             raise ValueError(f"프롬프트 {T}토큰이 max_seq_len {L}보다 길다 — 앞부분을 잘라서 넣을 것")
         n_new = min(max_new_tokens, L - T)
@@ -380,8 +412,19 @@ class GPT(nn.Module):
                 seen[:, stop] = False
         done = torch.zeros(B, dtype=torch.bool, device=idx.device)
 
-        cache = KVCache(len(self.blocks), T + n_new)
-        logits = self._step(idx, cache, explicit)  # 프롬프트 프리필 (한 번에)
+        start = 0
+        if cache is None:
+            cache = KVCache(len(self.blocks), T + n_new)
+        else:
+            if B != 1:
+                raise ValueError("캐시 재사용은 배치 1만 지원한다")
+            if cache.max_len < T + n_new:
+                raise ValueError(f"캐시가 작다: {cache.max_len} < {T + n_new}")
+            start = cache.reuse(idx[0].tolist())
+        track = B == 1
+        logits = self._step(idx[:, start:], cache, explicit)  # 프롬프트 프리필 (한 번에)
+        if track:
+            cache.tokens = idx[0].tolist()
         for i in range(n_new):
             if seen is not None:
                 logits = apply_repetition_penalty(logits, seen, repetition_penalty)
@@ -397,6 +440,8 @@ class GPT(nn.Module):
                 if stop is not None:
                     seen[:, stop] = False
             logits = self._step(nxt, cache, explicit)
+            if track:
+                cache.tokens.append(int(nxt))
 
     @torch.no_grad()
     def generate(self, idx, max_new_tokens, temperature=0.8, top_p=0.95, eos_id=None, **kw):

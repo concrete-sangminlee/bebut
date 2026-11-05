@@ -76,8 +76,11 @@ def add_sampling_args(ap):
     ap.add_argument("--seed", type=int, default=None)
 
 
-def stream(model, tok, ids, args, stop_ids, out=sys.stdout):
-    """생성하며 바로 출력하고, 생성된 전체 텍스트와 토큰 수를 돌려준다."""
+def stream(model, tok, ids, args, stop_ids, out=sys.stdout, cache=None):
+    """생성하며 바로 출력하고, 생성된 전체 텍스트와 토큰 수를 돌려준다.
+
+    cache(model.new_cache())를 넘기면 지난 호출과 겹치는 앞부분의 K·V를 재사용한다.
+    """
     device = model.tok_emb.weight.device
     gen = None
     if args.seed is not None:
@@ -87,7 +90,7 @@ def stream(model, tok, ids, args, stop_ids, out=sys.stdout):
     for t in model.generate_stream(
             torch.tensor([ids], device=device), args.max_tokens, args.temperature, args.top_p,
             top_k=args.top_k, min_p=args.min_p, repetition_penalty=args.repetition_penalty,
-            stop_ids=stop_ids, generator=gen):
+            stop_ids=stop_ids, generator=gen, cache=cache):
         n += 1
         piece = dec.push(int(t))
         pieces.append(piece)
@@ -103,6 +106,8 @@ def chat_loop(model, tok, args):
     # 답변 자리를 남기고 남는 만큼만 기록을 넣는다 (max_tokens가 너무 크면 절반은 문맥에 양보)
     budget = max(model.cfg.max_seq_len // 2, model.cfg.max_seq_len - args.max_tokens)
     messages = [{"role": "system", "content": args.system}] if args.system else []
+    # 턴을 넘겨 K·V를 재사용한다 — 매 턴 기록 전체를 다시 계산하지 않고 새 부분만 prefill
+    cache = None if args.no_prefix_cache else model.new_cache()
     print("대화 모드 — 빈 입력 또는 /exit 종료, /reset 기록 삭제, /system <내용> 시스템 프롬프트")
     while True:
         try:
@@ -126,9 +131,11 @@ def chat_loop(model, tok, args):
         ids = fit_messages(tok, messages, budget)
         print("모델: ", end="", flush=True)
         t0 = time.time()
-        reply, n = stream(model, tok, ids, args, stop)
+        reply, n = stream(model, tok, ids, args, stop, cache=cache)
         if args.verbose:
-            print(f"  [{n}토큰, {n / max(1e-6, time.time() - t0):.1f} tok/s, 문맥 {len(ids)}토큰]")
+            reused = cache.reused if cache is not None else 0
+            print(f"  [{n}토큰, {n / max(1e-6, time.time() - t0):.1f} tok/s, 문맥 {len(ids)}토큰 "
+                  f"중 {reused}토큰 캐시 재사용]")
         messages.append({"role": "assistant", "content": reply.strip()})
 
 
@@ -142,6 +149,8 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--dtype", choices=["auto", "fp32", "bf16"], default="auto")
     ap.add_argument("--verbose", action="store_true", help="토큰 수·속도 표시")
+    ap.add_argument("--no-prefix-cache", action="store_true",
+                    help="턴 사이 KV 캐시 재사용 끄기 (bf16에서 완전한 재현이 필요할 때)")
     add_sampling_args(ap)
     args = ap.parse_args()
 

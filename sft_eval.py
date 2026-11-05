@@ -28,7 +28,13 @@ DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
                   "SFT 최종=checkpoints/sft_1b/latest.pt"]
 
 
-def correct(ans, keys):
+def correct(ans, keys, match=None):
+    """정답 키워드가 답에 있으면 정답. match="last_number"면 답의 마지막 숫자만 본다 —
+    산술 풀이(47 + 38 = 70 + 15 = 85)엔 중간 숫자가 많아, 아무 데나 있으면 맞다고 치면
+    틀린 최종 답도 통과할 수 있다."""
+    if match == "last_number":
+        nums = re.findall(r"-?\d[\d,]*", ans)
+        return bool(nums) and nums[-1].replace(",", "") in keys
     for k in keys:
         if k.isdigit():  # 숫자는 '17' 안의 '7'처럼 걸리지 않게 경계를 본다
             if re.search(rf"(?<!\d){k}(?!\d)", ans):
@@ -64,7 +70,7 @@ def chat_eval(model, tok, questions, max_new, repetition_penalty=1.0):
         stopped += ended
         r = repetitive(ans)
         rep += r
-        ok = correct(ans, q["a"]) if q["a"] else None
+        ok = correct(ans, q["a"], q.get("match")) if q["a"] else None
         if ok is not None:
             by_type.setdefault(q["type"], []).append(ok)
         rows.append({"type": q["type"], "q": q["q"], "answer": ans, "correct": ok,

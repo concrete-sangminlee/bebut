@@ -64,12 +64,18 @@ def test_sft_e2e_saves_epoch_checkpoints(tmp_path, tiny_tok):
                    if i % 2 else {"instruction": "인사해줘", "output": "안녕하세요. 저는 학생입니다."})
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
+    with open(tmp_path / "extra.jsonl", "w") as f:  # --extra-data는 학습에만 더해진다
+        for _ in range(16):
+            f.write(json.dumps({"instruction": "12 더하기 7은?", "output": "19입니다."},
+                               ensure_ascii=False) + "\n")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "sft.py"), "--base", str(base),
                         "--config", "ci_tiny_sft", "--tokenizer", str(tok_path),
-                        "--data", str(tmp_path / "data.jsonl"), "--out-dir", str(tmp_path / "out")],
+                        "--data", str(tmp_path / "data.jsonl"), "--out-dir", str(tmp_path / "out"),
+                        "--extra-data", str(tmp_path / "extra.jsonl")],
                        cwd=tmp_path, env={**os.environ, "PYTHONPATH": ROOT},
                        capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stdout[-2000:] + r.stderr[-2000:]
+    assert "추가 데이터" in r.stdout and "train 112 / val 24" in r.stdout  # val은 기본 데이터만
     out = tmp_path / "out" / "ci_tiny_sft"
     assert {"epoch0.pt", "epoch1.pt", "latest.pt"} <= set(os.listdir(out))
     vals = [float(v) for v in re.findall(r"val loss[^0-9]*([0-9.]+)", r.stdout)]

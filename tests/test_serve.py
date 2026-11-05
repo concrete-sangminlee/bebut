@@ -158,3 +158,31 @@ def test_client_disconnect_releases_lock(server):
     s.close()
     status, r = post(server, "/v1/chat/completions", CHAT)
     assert status == 200
+
+
+def test_engine_cache_reuse_matches_fresh_engine(tiny_tok):
+    """요청 사이 K·V 재사용: 같은 대화를 이어가든, 다른 대화가 끼어들든 결과가 같아야 한다."""
+    model = make_model(vocab_size=1024, max_seq_len=256)
+    shared = Engine(model, tiny_tok, "tiny")
+    p = shared.sampling({"temperature": 0, "max_tokens": 12})
+
+    def ask(engine, msgs):
+        return engine.complete(engine.chat_prompt({"messages": msgs}, p["max_tokens"]), p)[0]
+
+    a = [{"role": "user", "content": "안녕하세요"}]
+    b = [{"role": "user", "content": "대한민국의 수도는"}]
+    for turn in range(3):
+        for conv in (a, b):  # 두 대화가 번갈아 들어온다
+            got = ask(shared, conv)
+            assert got == ask(Engine(model, tiny_tok, "fresh"), conv), (turn, conv[0]["content"])
+            conv += [{"role": "assistant", "content": got}, {"role": "user", "content": f"질문 {turn}"}]
+    assert shared.cache.reused > 0
+
+
+def test_engine_without_prefix_cache(tiny_tok):
+    model = make_model(vocab_size=1024, max_seq_len=256)
+    e = Engine(model, tiny_tok, "tiny", prefix_cache=False)
+    p = e.sampling({"temperature": 0, "max_tokens": 8})
+    ids = e.chat_prompt({"messages": [{"role": "user", "content": "안녕하세요"}]}, 8)
+    assert e.cache is None
+    assert e.complete(ids, p)[0] == Engine(model, tiny_tok, "x").complete(ids, p)[0]
