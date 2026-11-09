@@ -1,0 +1,85 @@
+{
+ "n": 8,
+ "threshold": 0.5,
+ "train_rows": {
+  "beomi/KoAlpaca-v1.1a": 21155,
+  "nlpai-lab/kullm-v2": 152630,
+  "maywell/korean_textbooks/ko_wikidata": 127614,
+  "maywell/korean_textbooks/tiny-textbooks": 395985,
+  "maywell/korean_textbooks/claude_evol": 239102,
+  "maywell/korean_textbooks/normal_instructions": 240523,
+  "maywell/korean_textbooks/helpsteer": 25253,
+  "maywell/korean_textbooks/code-alpaca": 64112,
+  "maywell/korean_textbooks/mmlu_all": 97765,
+  "maywell/korean_textbooks/mmlu_abstract_algebra": 88848,
+  "maywell/korean_textbooks/mmlu_anatomy": 97463,
+  "maywell/korean_textbooks/mmlu_astronomy": 97347,
+  "maywell/korean_textbooks/mmlu_business_ethics": 97327,
+  "maywell/korean_textbooks/mmlu_clinical_knowledge": 97226,
+  "maywell/korean_textbooks/mmlu_college_biology": 97285,
+  "maywell/korean_textbooks/mmlu_college_chemistry": 97435,
+  "maywell/korean_textbooks/mmlu_college_computer_science": 92606,
+  "maywell/korean_textbooks/mmlu_college_mathematics": 94070,
+  "maywell/korean_textbooks/mmlu_college_medicine": 95156
+ },
+ "evals": {
+  "kmmlu": {
+   "items": 35030,
+   "checkable": 34017,
+   "flagged": 1,
+   "any_match": 48,
+   "examples": [
+    {
+     "id": "kmmlu/Information-Technology/209",
+     "overlap": 1.0,
+     "text": "컴파일러와 인터프리터의 가장 큰 차이점은?",
+     "evidence": "maywell/korean_textbooks/claude_evol#18062"
+    }
+   ]
+  },
+  "haerae": {
+   "items": 1538,
+   "checkable": 1379,
+   "flagged": 0,
+   "any_match": 3,
+   "examples": []
+  },
+  "copa": {
+   "items": 1000,
+   "checkable": 963,
+   "flagged": 0,
+   "any_match": 0,
+   "examples": []
+  },
+  "boolq": {
+   "items": 1404,
+   "checkable": 1404,
+   "flagged": 0,
+   "any_match": 25,
+   "examples": []
+  },
+  "hellaswag": {
+   "items": 500,
+   "checkable": 500,
+   "flagged": 0,
+   "any_match": 0,
+   "examples": []
+  },
+  "heldout": {
+   "items": 36,
+   "checkable": 22,
+   "flagged": 0,
+   "any_match": 0,
+   "examples": []
+  },
+  "math": {
+   "items": 200,
+   "checkable": 51,
+   "flagged": 0,
+   "any_match": 0,
+   "examples": []
+  }
+ },
+ "flagged_total": 1,
+ "seconds": 768
+}

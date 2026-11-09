@@ -21,7 +21,7 @@ import time
 import torch
 
 from chat import encode_prompt
-from eval import BENCHMARKS, run_benchmarks
+from eval import BENCHMARKS, load_exclude, run_benchmarks
 from sample import load_model, pick_device
 
 DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
@@ -96,6 +96,8 @@ def main():
                     help="kmmlu·haerae도 넣을 수 있다")
     ap.add_argument("--bench-shots", type=int, default=5)
     ap.add_argument("--format", choices=["cloze", "mc"], default="cloze")
+    ap.add_argument("--exclude-ids", default=None,
+                    help="오염 문항 id 목록 JSON (evals/contamination.py --out-ids) — 빼고 채점")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="logs/sft_eval.json")
@@ -123,7 +125,8 @@ def main():
         r["kobest"], r["bench"] = {}, {}
         if not args.skip_kobest:
             r["kobest"], r["bench"] = run_benchmarks(model, tok, args.benches, device, args.shots,
-                                                     args.bench_shots, args.format, args.limit)
+                                                     args.bench_shots, args.format, args.limit,
+                                                 load_exclude(args.exclude_ids))
 
         r["seconds"] = round(time.time() - t0)
         results[label] = r
