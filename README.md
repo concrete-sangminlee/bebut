@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/concrete-sangminlee/bebut/actions/workflows/ci.yml/badge.svg)](https://github.com/concrete-sangminlee/bebut/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Python 3.11–3.13](https://img.shields.io/badge/python-3.11%E2%80%933.13-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.6%2B-ee4c2c.svg)](https://pytorch.org/)
 [![Language: Korean](https://img.shields.io/badge/language-Korean-brightgreen.svg)](README.md)
 
@@ -125,6 +125,9 @@ dev 5문항으로 5-shot)와 **HAE-RAE Bench 1.0**(한국 문화·역사·어휘
   **문자**를 비교 — KMMLU 논문·리더보드와 같은 형식). 1B급 모델은 mc 형식에서 거의 무작위
   수준이라 cloze가 신호를 더 남기고, 다른 모델의 공개 점수와 비교할 때는 mc를 씁니다.
 - 프롬프트가 문맥(2048)을 넘으면 앞쪽(few-shot 예시부터)을 잘라 채점하고 잘린 수를 기록합니다.
+- **오염 검사**: 실제로 학습에 쓴 SFT 데이터와 annealing 교과서 전체(232만 행)를 4만 문항과
+  대조한 결과 KMMLU 1문항(일반적인 질문 하나)을 빼면 오염이 없었습니다
+  ([RESULTS §8](docs/RESULTS.md#8-벤치마크-오염-검사), `python -m evals.contamination`).
 - 실제 데이터(HF `HAERAE-HUB/KMMLU`, `HAERAE-HUB/HAE_RAE_BENCH_1.0`, `skt/kobest_v1`)에서
   전 과목·전 범주가 로드·채점되는 것을 확인했고, CI는 같은 스키마의 가짜 행으로 검사합니다
   (`BEBUT_NET_TESTS=1`이면 실제 데이터로).
@@ -156,7 +159,10 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
 `datasets`(코퍼스 다운로드)와 PyTorch(행렬 연산·자동미분)를 빼면 전부 이 저장소 안에 있습니다.
 
 - **BPE 토크나이저** — 증분 쌍 빈도 갱신 + inverted index + lazy-deletion heap으로
-  500MB 코퍼스에서 64K vocab을 18.6분에 학습 ([tokenizer/bpe.py](tokenizer/bpe.py))
+  500MB 코퍼스에서 64K vocab을 18.6분에 학습 ([tokenizer/bpe.py](tokenizer/bpe.py)).
+  학습에 안 쓴 한국어 웹 텍스트에서 **글자/토큰 2.51** — GPT-4o 1.65, EXAONE 3.5 1.90,
+  Qwen2.5 1.46보다 같은 글을 적은 토큰으로 담는다 ([비교](docs/RESULTS.md#7-토크나이저-효율),
+  [tokenizer/compare.py](tokenizer/compare.py))
 - **트랜스포머** — RMSNorm · RoPE · GQA · QK-Norm · SwiGLU · embedding tying.
   교육용 명시적 attention과 FlashAttention 경로를 모두 두고 단위테스트로 일치 검증
   ([model.py](model.py))
@@ -205,8 +211,8 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 ./run_training.sh base_1b data/shards_26b        # 죽으면 자동 재개
 ./watch_milestones.sh &                          # 스냅샷 생길 때마다 자동 평가
 
-# 5) 평가 — perplexity·BPB + KOBEST + KMMLU(5-shot) + HAE-RAE
-python final_eval.py
+# 5) 평가 — perplexity·BPB + KOBEST + KMMLU(5-shot) + HAE-RAE (오염 문항 제외)
+python final_eval.py --exclude-ids evals/contaminated_ids.json
 python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
 # 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
@@ -247,7 +253,7 @@ tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학�
 tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64K vocab
 data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더·산술 SFT 생성기
 configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
-evals/                   자체 평가 문항(대화 36 · 산술 200) + 학습데이터 오염 검사
+evals/                   자체 평가 문항(대화 36 · 산술 200) + 벤치마크 오염 검사(n-gram)
 docs/                    결과 정리, 운영 가이드, 추론 가이드(실측), 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 ```
