@@ -23,58 +23,276 @@
   "maywell/korean_textbooks/mmlu_college_mathematics": 94070,
   "maywell/korean_textbooks/mmlu_college_medicine": 95156,
   "wikimedia/wikipedia/20231101.ko": 647897,
-  "heegyu/namuwiki-extracted": 565293
+  "heegyu/namuwiki-extracted": 565293,
+  "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)": 5566000
  },
  "evals": {
   "kmmlu": {
    "items": 35030,
    "checkable": 33929,
-   "flagged": 10,
-   "any_match": 84,
+   "flagged": 220,
+   "any_match": 696,
    "examples": [
+    {
+     "id": "kmmlu/Agricultural-Sciences/489",
+     "overlap": 1.0,
+     "text": "종자관리사의 자격정지 1년에 해당하는 위반사항은 어느 것인가?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3908540",
+     "match": "종자관리사의 자격정지 1년에 해당하는 위반사항은 어느 것인가"
+    },
+    {
+     "id": "kmmlu/Aviation-Engineering-and-Maintenance/612",
+     "overlap": 1.0,
+     "text": "흐르지 않고 정지되어 있는 유체에 대한 설명으로 틀린 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1921293",
+     "match": "흐르지 않고 정지되어 있는 유체에 대한 설명으로 틀린"
+    },
+    {
+     "id": "kmmlu/Biology/782",
+     "overlap": 1.0,
+     "text": "가해습성에 따른 해충의 분류로 옳지 않은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2952336",
+     "match": "가해습성에 따른 해충의 분류로 옳지 않은 것은"
+    },
+    {
+     "id": "kmmlu/Chemical-Engineering/716",
+     "overlap": 0.857,
+     "text": "뉴톤 유체가 관속을 흐를 때 관 중심으로부터 거리 r 만큼 떨어진 점에서 전단응력 τ는?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2558213",
+     "match": "뉴톤 유체가 관속을 흐를 때 관 중심으로부터 거리"
+    },
     {
      "id": "kmmlu/Chemical-Engineering/978",
      "overlap": 0.824,
      "text": "“액체혼합물 중의 한 성분이 나타내는 증기압은 그 온도에 있어서 그 성분이 단독으로 조재할 때의 증기압에 그 성분의 몰분율을 곱한 값과 같다.” 이것은 누구의 법칙인가?",
      "evidence": "heegyu/namuwiki-extracted#271154",
      "match": "액체혼합물 중의 한 성분이 나타내는 증기압은 그 온도에"
-    },
-    {
-     "id": "kmmlu/Information-Technology/122",
-     "overlap": 0.75,
-     "text": "기업에서 전략적으로 완벽에 가까운 제품이나 서비스를 개발하고 제공하려는 목적으로 정립된 품질경영기법은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#42810",
-     "match": "기업에서 전략적으로 완벽에 가까운 제품이나 서비스를 개발하고 제공하려는"
-    },
-    {
-     "id": "kmmlu/Information-Technology/209",
-     "overlap": 1.0,
-     "text": "컴파일러와 인터프리터의 가장 큰 차이점은?",
-     "evidence": "maywell/korean_textbooks/claude_evol#18062",
-     "match": "컴파일러와 인터프리터의 가장 큰 차이점은"
-    },
-    {
-     "id": "kmmlu/Law/272",
-     "overlap": 0.545,
-     "text": "사회보장기본법상 생애주기에 걸쳐 보편적으로 충족되어야 하는 기본욕구와 특정한 사회위험에 의하여 발생하는 특수욕구를 동시에 고려하여 소득ㆍ서비스를 보장하는 맞춤형 사회보장제도는?",
-     "evidence": "heegyu/namuwiki-extracted#347608",
-     "match": "생애주기에 걸쳐 보편적으로 충족되어야 하는 기본욕구와 특정한 사회위험에"
-    },
-    {
-     "id": "kmmlu/Law/440",
-     "overlap": 0.571,
-     "text": "청원경찰법령상 청원경찰의 효율적인 운영을 위하여 청원주를 지도하며 감독상 필요한 명령을 할 수 있는 자는?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#167265",
-     "match": "청원경찰의 효율적인 운영을 위하여 청원주를 지도하며 감독상 필요한"
     }
    ],
    "partial": [
     {
+     "id": "kmmlu/Korean-History/32",
+     "overlap": 0.49,
+     "text": "밑줄 친 ‘이 시기’에 있었던 사실로 옳은 것은? 이 시기의 불교 조각은 지역에 따라 다양하게 제작되었다 . 처음에는 하남 하사창동의 철 조 석가 여래 좌상과 같은 대형 철불이 많이 제작되었다 . 또한 덩치가 큰 석 불이 유행하였는데 , 논산 관촉사 석조 미륵보살 입상이 대표적이다 . ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1638816",
+     "match": "밑줄 친 이 시기 에 있었던 사실로 옳은"
+    },
+    {
+     "id": "kmmlu/Korean-History/9",
+     "overlap": 0.487,
+     "text": "다음 조항을 포함한 법률에 대한 설명으로 옳지 않은 것은? 제1조 일본 정부와 통 모하여 한일 합병에 적극 협력한 자, 한국의 주권을 침해하는 조약 또는 문서에 조인한 자와 이를 모의 한 자는 사형 또는 무기 징역에 처하고 , 그 재산과 유산의 전부 혹은 2분의 1 이상을 몰수한 다 .",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1638816",
+     "match": "다음 조항을 포함한 법률에 대한 설명으로 옳지 않은"
+    },
+    {
      "id": "kmmlu/Law/228",
-     "overlap": 0.421,
+     "overlap": 0.474,
      "text": "경비업법령상 양벌규정이 적용되는 경우에 해당하지 않는 것은? (단, 법인 또는 개인이 그 위반행위를 방지하기 위하여 해당 업무에 관하여 상당한 주의와 감독을 게을리하지 아니한 경우는 고려하지 않음)",
      "evidence": "heegyu/namuwiki-extracted#69044",
      "match": "법인 또는 개인이 그 위반행위를 방지하기 위하여 해당"
+    },
+    {
+     "id": "kmmlu/Mechanical-Engineering/962",
+     "overlap": 0.471,
+     "text": "시멘트가 공기 중의 습기를 받아 천천히 수화 반응을 일으켜 작은 알갱이 모양으로 굳어졌다가, 이것이 계속 진행되면 주변의 시멘트와 달라붙어 결국에는 큰 덩어리로 굳어지는 현상은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#940993",
+     "match": "일으켜 작은 알갱이 모양으로 굳어졌다가 이것이 계속 진행되면"
+    },
+    {
+     "id": "kmmlu/Psychology/505",
+     "overlap": 0.455,
+     "text": "기술기초이론 지식 또는 숙련기능을 바탕으로 복합적인 기초기술 및 기능업무를 수행할 수 있는 능력의 보유여부를 검정기준으로 하는 국가기술자격 등급은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3738222",
+     "match": "기술기초이론 지식 또는 숙련기능을 바탕으로 복합적인 기초기술 및"
+    },
+    {
+     "id": "kmmlu/Public-Safety/134",
+     "overlap": 0.452,
+     "text": "소방본부장·소방서장 또는 소방대장은 사람을 구출 하거나 불이 번지는 것을 막기 위하여 필요한 때에는 화재가 발생하거나 불이 번질 우려가 있는 소방대상물 및 토지를 일시적으로 사용하거나 그 사용의 제한 또는 소방활동에 필요한 처분을 할 수 있는데 이를 무엇이라 하는가?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2431338",
+     "match": "때에는 화재가 발생하거나 불이 번질 우려가 있는 소방대상물"
+    },
+    {
+     "id": "kmmlu/Korean-History/68",
+     "overlap": 0.451,
+     "text": "밑줄 친 ‘왕’의 재위 기간에 있었던 일로 옳은 것은? 왕의 어릴 때 이름은 모니노이며 , 신 돈의 여 종 반야의 소생이었다 . 어떤 사람은 “반야가 낳은 아이가 죽어서 다른 아이를 훔쳐서 길렀는데 , 공민왕이 자신의 아들이라고 칭하였다 .”라고 하였다 . 왕은 공민왕이 죽은 뒤 이인 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1638816",
+     "match": "밑줄 친 왕 의 재위 기간에 있었던 일로"
+    },
+    {
+     "id": "kmmlu/Korean-History/85",
+     "overlap": 0.451,
+     "text": "밑줄 친 ‘왕’의 재위 기간에 있었던 일로 옳은 것은? 왕의 어릴 때 이름은 모니노이며 , 신 돈의 여 종 반야의 소생이었다 . 어떤 사람은 “반야가 낳은 아이가 죽어서 다른 아이를 훔쳐서 길렀는데 , 공민왕이 자신의 아들이라고 칭하였다 .”라고 하였다 . 왕은 공민왕이 죽은 뒤 이인 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1638816",
+     "match": "밑줄 친 왕 의 재위 기간에 있었던 일로"
+    },
+    {
+     "id": "kmmlu/Electronics-Engineering/946",
+     "overlap": 0.444,
+     "text": "실수 (0.01101)2을 32비트 부동 소수점으로 표현하려고 한다. 지수부에 들어갈 알맞은 표현은? (단, 바이어스된 지수(biased exponent)는 (01111111)2로 나타내며 IEEE754 표준을 따른다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#932044",
+     "match": "32비트 부동 소수점으로 표현하려고 한다 지수부에 들어갈 알맞은"
+    },
+    {
+     "id": "kmmlu/Food-Processing/273",
+     "overlap": 0.444,
+     "text": "친환경농업육성법 인증 관련 규정에 대해 옳은 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "옳은 것은 오류 신고가 접수된 문제입니다 반드시 정답과"
+    },
+    {
+     "id": "kmmlu/Law/70",
+     "overlap": 0.444,
+     "text": "관계인이 예방규정을 정하여야 하는 제조소등으로 옳은 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "옳은 것은 오류 신고가 접수된 문제입니다 반드시 정답과"
+    },
+    {
+     "id": "kmmlu/Law/246",
+     "overlap": 0.444,
+     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」 및 같은 법 시행령상 지방소방기술심의위원회의 심의사항으로 옳은 것은?",
+     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
+     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
+    },
+    {
+     "id": "kmmlu/Agricultural-Sciences/457",
+     "overlap": 0.429,
+     "text": "협력제(synergist)로 이용되는 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Agricultural-Sciences/511",
+     "overlap": 0.429,
+     "text": "식물체에서 영양번식의 이점이 아닌 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Chemical-Engineering/239",
+     "overlap": 0.429,
+     "text": "내부에너지를 나타내는 단위가 아닌 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Electrical-Engineering/863",
+     "overlap": 0.429,
+     "text": "SCR에 대한 설명으로 잘못된 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Fashion/9",
+     "overlap": 0.429,
+     "text": "수자직에 대한 설명으로 틀린 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Food-Processing/417",
+     "overlap": 0.429,
+     "text": "전분의 노화 방지책이 아닌 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Food-Processing/969",
+     "overlap": 0.429,
+     "text": "친환경농어업 육성 및 유기식품 등의 관리·지원에 관한 법률에 의해 1년 이하의 징역 또는 1천만원 이하의 벌금에 처할 수 있는 경우는?",
+     "evidence": "heegyu/namuwiki-extracted#1971",
+     "match": "친환경농어업 육성 및 유기식품 등의 관리 지원에 관한"
+    },
+    {
+     "id": "kmmlu/Law/475",
+     "overlap": 0.429,
+     "text": "조약과 일반적으로 승인된 국제법규에 대한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "대한 설명으로 옳지 않은 것은 다툼이 있는 경우"
+    },
+    {
+     "id": "kmmlu/Law/632",
+     "overlap": 0.429,
+     "text": "변호사의 수임제한 등에 관한 설명 중 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2985887",
+     "match": "설명 중 옳지 않은 것은 다툼이 있는 경우"
+    },
+    {
+     "id": "kmmlu/Machine-Design-and-Manufacturing/42",
+     "overlap": 0.429,
+     "text": "설비의 평균 고장률을 나타내는 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Patent/89",
+     "overlap": 0.429,
+     "text": "점유개정 및 목적물반환청구권의 양도에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우에는 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2862018",
+     "match": "관한 설명으로 옳지 않은 것은 다툼이 있는 경우에는"
+    },
+    {
+     "id": "kmmlu/Psychology/437",
+     "overlap": 0.429,
+     "text": "직업능력개발계좌제에 대한 설명으로 틀린 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Psychology/735",
+     "overlap": 0.429,
+     "text": "직업상담과정에 관한 설명으로 틀린 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Refrigerating-Machinery/616",
+     "overlap": 0.429,
+     "text": "2중 덕트방식의 이점이 아닌 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Social-Welfare/70",
+     "overlap": 0.429,
+     "text": "가설검정에 관한 설명으로 맞는 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "것은 오류 신고가 접수된 문제입니다 반드시 정답과 해설을"
+    },
+    {
+     "id": "kmmlu/Mechanical-Engineering/24",
+     "overlap": 0.423,
+     "text": "산소 1kg과 질소 4kg이 혼합되어 체적 2m3의 용기에 25℃의 상태로 있을 때 이 용기내의 압력은 대체로 얼마인가? (단, 산소와 질소는 이상기체로 취급하고 기체상수는      각각 0.25983kJ/kg∙K, 0.29680kJ/kg∙K이다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#463228",
+     "match": "용기에 25 c의 상태로 있을 때 이 용기내의"
+    },
+    {
+     "id": "kmmlu/Computer-Science/259",
+     "overlap": 0.417,
+     "text": "데이터가 현실세계로 부터 단순한 관찰이나 측정을 통해서 수집한 사실이나 값을 의미하는 데 반하여, 이것은 어떤 상황에 관한 의사 결정을 할 수 있게 하는 지식으로서 데이터의 유효한 해석이나 데이터 상호간의 관계를 말한다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3002589",
+     "match": "단순한 관찰이나 측정을 통해서 수집한 사실이나 값을 의미하는"
+    },
+    {
+     "id": "kmmlu/Mechanical-Engineering/48",
+     "overlap": 0.412,
+     "text": "바다에 비중이 0.88인 얼음이 떠 있는데 수면 위로 나와 있는 체적은 30m3이다. 이 얼음의 전체중량은 몇 kN인가? (단, 바닷물의 비중은 1.025 이다)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#463228",
+     "match": "바다에 비중이 0 88인 얼음이 떠 있는데 수면"
+    },
+    {
+     "id": "kmmlu/Construction/681",
+     "overlap": 0.4,
+     "text": "건축물의 터파기시에 발생되는 보일링 현상의 설명으로 옳은 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "옳은 것은 오류 신고가 접수된 문제입니다 반드시 정답과"
+    },
+    {
+     "id": "kmmlu/Ecology/909",
+     "overlap": 0.4,
+     "text": "막깬돌이나 잡석을 쌓을 때 정해진 접축부를 만들지 않고 쌓기 때문에 작은 외력에도 돌이 빠지거나 변형되기 쉬운 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4129027",
+     "match": "만들지 않고 쌓기 때문에 작은 외력에도 돌이 빠지거나"
     },
     {
      "id": "kmmlu/Electronics-Engineering/485",
@@ -91,6 +309,69 @@
      "match": "가열되어 그 증기압이 주위의 압력보다 커져서 액체의 표면뿐만"
     },
     {
+     "id": "kmmlu/Environmental-Science/65",
+     "overlap": 0.4,
+     "text": "적정법을 이용한 염소이온의 측정시 적정의 종말점으로 옳은 것은?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "옳은 것은 오류 신고가 접수된 문제입니다 반드시 정답과"
+    },
+    {
+     "id": "kmmlu/Food-Processing/232",
+     "overlap": 0.4,
+     "text": "축산경영의 궁극적인 목표는?(오류 신고가 접수된 문제입니다. 반드시 정답과 해설을 확인하시기 바랍니다.)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4558820",
+     "match": "오류 신고가 접수된 문제입니다 반드시 정답과 해설을 확인하시기"
+    },
+    {
+     "id": "kmmlu/Information-Technology/390",
+     "overlap": 0.4,
+     "text": "프로그램을 유형물에 고정시켜 새로운 창작성을 더하지 아니하고 다시 제작하는 것을 무엇이라 하는가?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#535828",
+     "match": "프로그램을 유형물에 고정시켜 새로운 창작성을 더하지 아니하고 다시"
+    },
+    {
+     "id": "kmmlu/Law/80",
+     "overlap": 0.4,
+     "text": "행정행위의 하자에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
+    },
+    {
+     "id": "kmmlu/Law/300",
+     "overlap": 0.4,
+     "text": "행정상 손실보상에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
+    },
+    {
+     "id": "kmmlu/Law/333",
+     "overlap": 0.4,
+     "text": "사인의 공법행위에 관한 설명으로 옳지 않은 것은?(다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
+    },
+    {
+     "id": "kmmlu/Law/525",
+     "overlap": 0.4,
+     "text": "행정상 즉시강제에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
+    },
+    {
+     "id": "kmmlu/Law/569",
+     "overlap": 0.4,
+     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」및 같은 법 시행령상 특정소방대상물에 관한 내용으로 옳은 것은?",
+     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
+     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
+    },
+    {
+     "id": "kmmlu/Law/650",
+     "overlap": 0.4,
+     "text": "항고소송의 대상에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
+    },
+    {
      "id": "kmmlu/Law/762",
      "overlap": 0.4,
      "text": "상법상 자기명의로써 타인의 계산으로 물건 또는 유가증권의 매매를 영업으로 하는 자  는?",
@@ -98,329 +379,50 @@
      "match": "자기명의로써 타인의 계산으로 물건 또는 유가증권의 매매를 영업으로"
     },
     {
-     "id": "kmmlu/Computer-Science/429",
-     "overlap": 0.364,
-     "text": "CISC(Complex Instruction Set Computer) 와 RISC(Reduced Instruction Set Computer)에 대한 비교 설명으로 옳지 않은 것은?",
-     "evidence": "maywell/korean_textbooks/ko_wikidata#76835",
-     "match": "cisc complex instruction set computer 와 risc reduced"
+     "id": "kmmlu/Law/826",
+     "overlap": 0.4,
+     "text": "행정의 실효성 확보수단에 대한 설명으로 옳은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#751720",
+     "match": "대한 설명으로 옳은 것은 다툼이 있는 경우 판례에"
     },
     {
-     "id": "kmmlu/Construction/226",
-     "overlap": 0.333,
-     "text": "특별시ㆍ광역시ㆍ특별자치시ㆍ특별자치도ㆍ시 또는 군의 관할 구역에 대하여 기본적인 공간구조와 장기발전방향을 제시하는 종합계획으로서 도시ㆍ군관리계획 수립의 지침이 되는 계획은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#61017",
-     "match": "또는 군의 관할 구역에 대하여 기본적인 공간구조와 장기발전방향을"
+     "id": "kmmlu/Law/829",
+     "overlap": 0.4,
+     "text": "행정행위의 존속력에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
     },
     {
-     "id": "kmmlu/Management/220",
-     "overlap": 0.333,
-     "text": "토지의 이용 및 건축물의 용도, 건폐율, 용적률, 높이 등에 대한 국토계획법과 관련한 설명으로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141748",
-     "match": "토지의 이용 및 건축물의 용도 건폐율 용적률 높이"
+     "id": "kmmlu/Law/842",
+     "overlap": 0.4,
+     "text": "「국가배상법」에 관한 설명으로 옳지 않은 것은? (다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
     },
     {
-     "id": "kmmlu/Management/490",
-     "overlap": 0.31,
-     "text": "“상가건물임대차보호법”(법률 제15791호, 2018. 10. 16., 일부개정) 제10조1항은 '임대인은 임차인이 임대차기간이 만료되기 6개월 전부터 1개월 전까지 사이에 계약갱신을 요구할 경우 정당한 사유 없이 거절하지 못 한다'라고 규정하고 있다. 이 규정 적용의 예외로서 옳지 않",
-     "evidence": "heegyu/namuwiki-extracted#51782",
-     "match": "임대인은 임차인이 임대차기간이 만료되기 6개월 전부터 1개월 전까지"
+     "id": "kmmlu/Law/942",
+     "overlap": 0.4,
+     "text": "행정쟁송법상의 처분에 관한 설명으로 옳지 않은 것은?(다툼이 있는 경우 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2572881",
+     "match": "설명으로 옳지 않은 것은 다툼이 있는 경우 판례에"
     },
     {
-     "id": "kmmlu/Information-Technology/124",
-     "overlap": 0.3,
-     "text": "교착상태가 발행하기 위한 필요충분조건 중 프로세스가 어떤 자원의 사용을 끝낼 때까지 그 자원을 뺏을 수 없는 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#13154",
-     "match": "프로세스가 어떤 자원의 사용을 끝낼 때까지 그 자원을"
+     "id": "kmmlu/Patent/23",
+     "overlap": 0.4,
+     "text": "착오에 의한 의사표시에 관한 설명으로 옳은 것은? (다툼이 있는 경우에는 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3953196",
+     "match": "관한 설명으로 옳은 것은 다툼이 있는 경우에는 판례에"
     },
     {
-     "id": "kmmlu/Law/539",
-     "overlap": 0.286,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률 시행령」상 1급 소방안전관리대상물로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Civil-Engineering/150",
-     "overlap": 0.256,
-     "text": "국토의 이용 및 관리에 관한 계획의 원활한 수립과 집행, 합리적인 토지 이용 등을 위하여 토지의 투기적인 거래가 성향하거나 지가가 급격히 상승하는 지역과 그러한 우려가 있는 지역으로서 대통령령이 정하는 지역과 그러한 우려가 있는 지역으로서 대통령령이 정하는 지역에 대하여는 얼마이내의 기",
-     "evidence": "wikimedia/wikipedia/20231101.ko#89528",
-     "match": "국토의 이용 및 관리에 관한 계획의 원활한 수립과"
-    },
-    {
-     "id": "kmmlu/Ecology/84",
-     "overlap": 0.25,
-     "text": "자연적 또는 인위적 위협요인으로 개체수가 현저하게 감소되고 있어 위협요인이 제거되거나 완화되지 아니할 경우 가까운 장래에 멸종위기에 처할 우려가 있는 야생동ㆍ식물로서 관계 중앙행정기관의 장과 협의하여 환경부령이 정하는 종은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#4069",
-     "match": "자연적 또는 인위적 위협요인으로 개체수가 현저하게 감소되고 있어"
-    },
-    {
-     "id": "kmmlu/Law/505",
-     "overlap": 0.25,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률 시행령」상 수용인원 산정방법으로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Maritime-Engineering/103",
-     "overlap": 0.25,
-     "text": "하중을 분포시키거나 균열을 제어할 목적으로 주철근과 직각에 가까운 방향으로 배치한 보조철근은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#193647",
-     "match": "균열을 제어할 목적으로 주철근과 직각에 가까운 방향으로 배치한"
-    },
-    {
-     "id": "kmmlu/Telecommunications-and-Wireless-Technology/651",
-     "overlap": 0.25,
-     "text": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로 작성되어 송수신 또는 저장된 문서형식으로 표준화된 것은?",
-     "evidence": "heegyu/namuwiki-extracted#353967",
-     "match": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로"
-    },
-    {
-     "id": "kmmlu/Law/876",
-     "overlap": 0.238,
-     "text": "여러 채무자가 같은 내용의 급부에 관하여 각각 독립해서 전부의 급부를 하여야 할 채무를 부담하고 그 중 한 채무자가 전부의 급부를 하면 모든 채무자의 채무가 소멸하게 되는 다수당사자의 채무관계는?",
-     "evidence": "heegyu/namuwiki-extracted#369412",
-     "match": "내용의 급부에 관하여 각각 독립해서 전부의 급부를 하여야"
-    },
-    {
-     "id": "kmmlu/Law/379",
-     "overlap": 0.222,
-     "text": "민법상 당사자 일방이 금전 기타 대체물의 소유권을 상대방에게 이전할 것을 약정하고 상대방은 그와 같은 종류, 품질 및 수량으로 반환할 것을 약정함으로써 그 효력이 생기는 전형계약은?",
-     "evidence": "heegyu/namuwiki-extracted#368164",
-     "match": "당사자 일방이 금전 기타 대체물의 소유권을 상대방에게 이전할"
-    },
-    {
-     "id": "kmmlu/Law/444",
-     "overlap": 0.222,
-     "text": "「화재예방, 소방시설 설치⋅유지 및 안전관리에 관한 법률 시행령」상 특정소방대상물 중 근린생활시설로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/794",
-     "overlap": 0.222,
-     "text": "｢화재예방, 소방시설 설치･유지 및 안전관리에 관한 법률 시행령｣상 소방시설 중 소화활동설비로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/813",
-     "overlap": 0.222,
-     "text": "사회보장기본법상 국가와 지방자치단체의 책임 하에 생활유지 능력이 없거나 생활이 어려운 국민의 최저생활을 보장하고 자립을 지원하는 제도는?",
-     "evidence": "heegyu/namuwiki-extracted#94993",
-     "match": "능력이 없거나 생활이 어려운 국민의 최저생활을 보장하고 자립을"
-    },
-    {
-     "id": "kmmlu/Law/856",
-     "overlap": 0.222,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률 시행령」상 특정소방대상물의 소방시설 설치면제기준으로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Maritime-Engineering/564",
-     "overlap": 0.222,
-     "text": "두 전하 사이에 작용하는 전기력은 전하의 크기에 비례하고 두 전하 사이의 거리의 제곱에 반비례 한다는 법칙은?",
-     "evidence": "maywell/korean_textbooks/normal_instructions#77024",
-     "match": "전기력은 전하의 크기에 비례하고 두 전하 사이의 거리의"
-    },
-    {
-     "id": "kmmlu/Telecommunications-and-Wireless-Technology/872",
-     "overlap": 0.222,
-     "text": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로 작성되어 송.수신 또는 저장된 문서형식으로 표준화된 것은?",
-     "evidence": "heegyu/namuwiki-extracted#353967",
-     "match": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로"
-    },
-    {
-     "id": "kmmlu/Criminal-Law/140",
-     "overlap": 0.2,
-     "text": "형의 집행 및 수용자의 처우에 관한 법률 의 내용으로 옳지 않은 것은?",
-     "evidence": "heegyu/namuwiki-extracted#373636",
-     "match": "형의 집행 및 수용자의 처우에 관한 법률 의"
-    },
-    {
-     "id": "kmmlu/Law/613",
-     "overlap": 0.2,
-     "text": "「화재예방, 소방시설 설치⋅유지 및 안전관리에 관한 법률 시행령」상 간이스프링클러를 설치하여야 하는 특정소방대상물로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/594",
-     "overlap": 0.182,
-     "text": "｢화재예방, 소방시설 설치･유지 및 안전관리에 관한 법률 시행령｣상 성능위주설계를 해야 하는 특정소방대상물의 범위로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Taxation/187",
-     "overlap": 0.182,
-     "text": "지방세 징수법 상체납자가 체납액에 충당할 만한 다른 재산을 제공할 때에는 압류할 수 없는 조건부 압류금지 재산에 해당하는 것은?",
-     "evidence": "heegyu/namuwiki-extracted#277463",
-     "match": "체납액에 충당할 만한 다른 재산을 제공할 때에는 압류할"
-    },
-    {
-     "id": "kmmlu/Telecommunications-and-Wireless-Technology/398",
-     "overlap": 0.182,
-     "text": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로 작성되어 송.수신 또는 저장된 문서형식으로 표준화된 것을 무엇이라고 하는가?",
-     "evidence": "heegyu/namuwiki-extracted#353967",
-     "match": "컴퓨터 등 정보처리능력을 가진 장치에 의하여 전자적인 형태로"
-    },
-    {
-     "id": "kmmlu/Korean-History/48",
-     "overlap": 0.171,
-     "text": "밑줄 친 ‘그’에 대한 설명으로 옳은 것은? 그가 왕에게 아뢰었다. “삼교는 솥의 발과 같아서 하나라도 없어서는 안 됩니다. 지금 유교와 불교는 모두 흥하는 데도교는 아직 번성하지 않으니, 소위 천하의 도술(道術)을 갖추었다고 할 수 없습니다.엎드려 청하오니 당에 사신을 보내도교를 구해",
-     "evidence": "wikimedia/wikipedia/20231101.ko#1693",
-     "match": "솥의 발과 같아서 하나라도 없어서는 안 됩니다 지금"
-    },
-    {
-     "id": "kmmlu/Ecology/183",
-     "overlap": 0.167,
-     "text": "환경에 영향을 미치는 행정계획의 수립 또는 개발 사업의 허가ㆍ인가ㆍ승인ㆍ면허ㆍ결정ㆍ지정 등을 함에 있어서 해당 행정계획 또는 개발사업의 대한 대안의 설정ㆍ분석 등 평가를 통하여 미리 환경측면의 적정성 및 입지의 타당성 등을 검토하는 제도는?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#170215",
-     "match": "등 평가를 통하여 미리 환경측면의 적정성 및 입지의"
-    },
-    {
-     "id": "kmmlu/Law/68",
-     "overlap": 0.167,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」상 과태료 부과대상으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/416",
-     "overlap": 0.167,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률 시행령」상 신축건축물로서 성능위주설계를 해야 할 특정 소방대상물의 범위로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Management/167",
-     "overlap": 0.158,
-     "text": "국가가 국민의 생활안정과 복지증진을 위하여 보험의 원리를 도입하여 만든 사회보험의 일종으로 가입자, 사용자 및 국가로부터 일정한 보험료를 받고 이를 재원으로 여러 가지 정형화된 보험금을 지급하는 사회보장제도는?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#67313",
-     "match": "보험의 원리를 도입하여 만든 사회보험의 일종으로 가입자 사용자"
-    },
-    {
-     "id": "kmmlu/Computer-Science/718",
-     "overlap": 0.143,
-     "text": "컴퓨터를 이용하여 기존의 문자나 숫자 정보뿐만 아니라 텍스트, 이미지, 오디오, 비디오 등 여러 가지 형태의 정보를 통합하여 처리하는 기술을 무엇이라고 하는가?",
-     "evidence": "maywell/korean_textbooks/tiny-textbooks#277936",
-     "match": "텍스트 이미지 오디오 비디오 등 여러 가지 형태의"
-    },
-    {
-     "id": "kmmlu/Criminal-Law/107",
-     "overlap": 0.143,
-     "text": "형의 집행 및 수용자의 처우에 관한 법률 시행령 상 수용에 대한 설명으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#211436",
-     "match": "형의 집행 및 수용자의 처우에 관한 법률 시행령"
-    },
-    {
-     "id": "kmmlu/Electronics-Engineering/136",
-     "overlap": 0.143,
-     "text": "고급 언어로 작성된 프로그램을 컴퓨터가 이해할 수 있는 기계어로 번역해 주는 프로그램을 무엇이라고 하는가?",
-     "evidence": "maywell/korean_textbooks/claude_evol#31144",
-     "match": "언어로 작성된 프로그램을 컴퓨터가 이해할 수 있는 기계어로"
-    },
-    {
-     "id": "kmmlu/Food-Processing/727",
-     "overlap": 0.143,
-     "text": "「농림축산식품부 소관 친환경농어업 육성 및 유기식품 등의 관리·지원에 관한 법률 시행규칙」상 유기식품등의 인증신청 시 제출해야 하는 서류가 아닌 것은?",
-     "evidence": "heegyu/namuwiki-extracted#1971",
-     "match": "친환경농어업 육성 및 유기식품 등의 관리 지원에 관한"
-    },
-    {
-     "id": "kmmlu/Food-Processing/969",
-     "overlap": 0.143,
-     "text": "친환경농어업 육성 및 유기식품 등의 관리·지원에 관한 법률에 의해 1년 이하의 징역 또는 1천만원 이하의 벌금에 처할 수 있는 경우는?",
-     "evidence": "heegyu/namuwiki-extracted#1971",
-     "match": "친환경농어업 육성 및 유기식품 등의 관리 지원에 관한"
-    },
-    {
-     "id": "kmmlu/Law/721",
-     "overlap": 0.143,
-     "text": "「화재예방, 소방시설 설치⋅유지 및 안전관리에 관한 법률」상 소방안전 특별관리시설물로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/797",
-     "overlap": 0.143,
-     "text": "「화재예방, 소방시설 설치⋅유지 및 안전관리에 관한 법률」상 청문 사유로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Criminal-Law/27",
-     "overlap": 0.125,
-     "text": "형의 집행 및 수용자의 처우에 관한 법률 시행규칙 상 수용자의 처우에 대한 설명으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#42520",
-     "match": "형의 집행 및 수용자의 처우에 관한 법률 시행규칙"
-    },
-    {
-     "id": "kmmlu/Environmental-Science/422",
-     "overlap": 0.115,
-     "text": "특별자치시장, 특별자치도지사, 시장, 군수, 구청장은 조례로 정하는 바에 따라 종량제 봉투 등의 제작, 유통, 판매를 대행하게 할 수 있다. 이를 위반하여 대행계약을 체결하지 않고 종량제 봉투 등을 제작, 유통한 자에 대한 벌칙 기준은?",
-     "evidence": "heegyu/namuwiki-extracted#283123",
-     "match": "특별자치시장 특별자치도지사 시장 군수 구청장은 조례로 정하는 바에"
-    },
-    {
-     "id": "kmmlu/Law/246",
-     "overlap": 0.111,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」 및 같은 법 시행령상 지방소방기술심의위원회의 심의사항으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Marketing/670",
-     "overlap": 0.111,
-     "text": "정보통신망 이용촉진 및 정보 보호 등에 관한 법률 중 개인정보 보호에 관한 내용으로 옳지 않은 것은?",
-     "evidence": "heegyu/namuwiki-extracted#298665",
-     "match": "정보통신망 이용촉진 및 정보 보호 등에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Criminal-Law/153",
-     "overlap": 0.1,
-     "text": "형의 집행 및 수용자의 처우에 관한 법률 시행규칙 상 수형자 직업훈련 대상자 선정의 제한사항에 해당하지 않는 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#42520",
-     "match": "형의 집행 및 수용자의 처우에 관한 법률 시행규칙"
-    },
-    {
-     "id": "kmmlu/Law/142",
-     "overlap": 0.1,
-     "text": "｢화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률｣ 및 같은법 시행령상 소방특별조사에 관한 설명으로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/266",
-     "overlap": 0.1,
-     "text": "｢화재예방, 소방시설 설치･유지 및 안전관리에 관한 법률 시행령｣상 특정소방대상물의 관계인이 특정소방대상물의 규모･용도 및 수용인원 등을 고려하여 갖추어야 하는 소방시설의 기준에 대한 내용으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/270",
-     "overlap": 0.1,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」상 소방시설관리사의 자격의 취소·정지 사유로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/569",
-     "overlap": 0.1,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」및 같은 법 시행령상 특정소방대상물에 관한 내용으로 옳은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
-    },
-    {
-     "id": "kmmlu/Law/966",
-     "overlap": 0.1,
-     "text": "「화재예방, 소방시설 설치·유지 및 안전관리에 관한 법률」상 특정소방대상물(소방안전관리대상물은 제외한다) 관계인의 업무로 옳지 않은 것은?",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141782",
-     "match": "화재예방 소방시설 설치 유지 및 안전관리에 관한 법률"
+     "id": "kmmlu/Patent/96",
+     "overlap": 0.4,
+     "text": "종물에 관한 설명 중 옳지 않은 것은? (다툼이 있는 경우에는 판례에 의함)",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3953196",
+     "match": "중 옳지 않은 것은 다툼이 있는 경우에는 판례에"
     }
    ],
    "sources": {
+    "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)": 642,
     "wikimedia/wikipedia/20231101.ko": 50,
     "heegyu/namuwiki-extracted": 27,
     "maywell/korean_textbooks/claude_evol": 4,
@@ -433,18 +435,53 @@
   "haerae": {
    "items": 1538,
    "checkable": 1379,
-   "flagged": 1,
-   "any_match": 12,
+   "flagged": 5,
+   "any_match": 34,
    "examples": [
+    {
+     "id": "haerae/General Knowledge/127",
+     "overlap": 0.806,
+     "text": "다음은 한 영화의 줄거리이다. 이 영화에 관한 설명으로 옳지 않은 것을 고르시오. ### 참고:새 집으로 이사 온 날 밤 정체불명의 괴한들에게 납치된 형 유석. 동생 진석은 형이 납치된 후 매일 밤 환청과 환각에 시달리며 불안해한다. 납치된지 19일째 되는 날 돌아온 유석은 그동안의 모",
+     "evidence": "wikimedia/wikipedia/20231101.ko#396759",
+     "match": "새 집으로 이사 온 날 밤 정체불명의 괴한들에게"
+    },
     {
      "id": "haerae/General Knowledge/133",
      "overlap": 0.857,
      "text": "다음은 한 영화에 대한 소개이다. 이 영화에서 다루는 사건으로 옳은 것은? ### 참고:택시운전사 만섭(송강호)은 외국손님을 태우고 광주에 갔다 통금 전에 돌아오면 밀린 월세를 갚을 수 있는 거금 10만원을 준다는 말에 독일기자 피터(토마스 크레취만)를 태우고 영문도 모른 채 길을 나선",
      "evidence": "heegyu/namuwiki-extracted#319259",
      "match": "택시운전사 만섭 송강호 은 외국손님을 태우고 광주에 갔다"
+    },
+    {
+     "id": "haerae/Reading Comprehension/424",
+     "overlap": 0.533,
+     "text": "다음을 읽고 글의 중심 생각을 고르십시오.  ### 참고: ‘욜로(YOLO)’는 ‘인생은 한 번뿐이다’를 뜻하는 ‘You Only Live Once’의 앞 글자를 딴 용어로 현재자신의 행복을 가장 중시하며 소비하는 태도를 말한다. 다시 말해, 미래 또는 남을 위해 희생하지 않고 현재의 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#938965",
+     "match": "yolo 는 인생은 한 번뿐이다 를 뜻하는 you"
+    },
+    {
+     "id": "haerae/Rare Words/357",
+     "overlap": 0.571,
+     "text": "① 새끼나 노 따위로 옭아서 고를 내어 짐승을 잡는 장치 ② 사람이 걸려들게 만든 수단이나 술책의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3972293",
+     "match": "1 새끼나 노 따위로 옭아서 고를 내어 짐승을"
+    },
+    {
+     "id": "haerae/Rare Words/364",
+     "overlap": 0.538,
+     "text": "이 사람에게는 저 사람 말을, 저 사람에게는 이 사람 말을 좋지 않게 전하여 이간질하는 짓의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#720830",
+     "match": "이 사람에게는 저 사람 말을 저 사람에게는 이"
     }
    ],
    "partial": [
+    {
+     "id": "haerae/General Knowledge/128",
+     "overlap": 0.481,
+     "text": "다음은 한 드라마의 소개 문장이다. 이 드라마에 관한 설명으로 옳지 않은 것을 고르시오. ### 참고:인색하고 욕심 많은 유아독존 사장님과 음침하고 눈물 많은 영감 발달 여직원이 무섭지만 슬픈 사연을 지닌 영혼들을 위령하는 로코믹 호러 드라마",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2502410",
+     "match": "인색하고 욕심 많은 유아독존 사장님과 음침하고 눈물 많은"
+    },
     {
      "id": "haerae/Rare Words/286",
      "overlap": 0.333,
@@ -453,11 +490,25 @@
      "match": "1 목표 이상 행복 따위를 추구하다 2 남의"
     },
     {
-     "id": "haerae/General Knowledge/127",
-     "overlap": 0.328,
-     "text": "다음은 한 영화의 줄거리이다. 이 영화에 관한 설명으로 옳지 않은 것을 고르시오. ### 참고:새 집으로 이사 온 날 밤 정체불명의 괴한들에게 납치된 형 유석. 동생 진석은 형이 납치된 후 매일 밤 환청과 환각에 시달리며 불안해한다. 납치된지 19일째 되는 날 돌아온 유석은 그동안의 모",
-     "evidence": "wikimedia/wikipedia/20231101.ko#396759",
-     "match": "새 집으로 이사 온 날 밤 정체불명의 괴한들에게"
+     "id": "haerae/Reading Comprehension/432",
+     "overlap": 0.265,
+     "text": "다음을 읽고 글의 제목으로 가장 알맞은 것을 고르십시오.  ### 참고: 경품 등과 관련해 기업이나 상점들이 소비자를 기만하는 행위가 끊이지 않고 있다. 경품 이벤트를열었다가 당첨자에게 약속했던 경품을 주지 않는 경우도 있지만, 이벤트에 당첨됐다고 거짓말을 한뒤 제품을 보내고 대금을 청",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3057223",
+     "match": "경품 등과 관련해 기업이나 상점들이 소비자를 기만하는 행위가"
+    },
+    {
+     "id": "haerae/Rare Words/28",
+     "overlap": 0.25,
+     "text": "이것저것 경위를 따지고 남을 공박하거나 자기 이론을 주장할 만한 말주변의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#720830",
+     "match": "이것저것 경위를 따지고 남을 공박하거나 자기 이론을 주장할"
+    },
+    {
+     "id": "haerae/General Knowledge/141",
+     "overlap": 0.235,
+     "text": "다음은 한 영화의 명대사이다. 이 영화에 대한 설명으로 옳지 않은 것을 고르시오. ### 참고:\"지금까지 이런 맛은 없었다. 이것은 갈비인가. 통닭인가? 네, 수원 왕갈비 통닭입니다.\"",
+     "evidence": "heegyu/namuwiki-extracted#428177",
+     "match": "지금까지 이런 맛은 없었다 이것은 갈비인가 통닭인가 네"
     },
     {
      "id": "haerae/Rare Words/390",
@@ -474,11 +525,25 @@
      "match": "오이의 허리를 서너 갈래로 갈라 속에 파 마늘"
     },
     {
-     "id": "haerae/Rare Words/357",
+     "id": "haerae/Rare Words/0",
      "overlap": 0.143,
-     "text": "① 새끼나 노 따위로 옭아서 고를 내어 짐승을 잡는 장치 ② 사람이 걸려들게 만든 수단이나 술책의 의미를 가진 단어로 알맞은 것은?",
-     "evidence": "heegyu/namuwiki-extracted#365136",
-     "match": "새끼나 노 따위로 옭아서 고를 내어 짐승을 잡는"
+     "text": "물건을 만들 때에 다듬지 않고 거칠게 대강 만드는 일의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3090873",
+     "match": "물건을 만들 때에 다듬지 않고 거칠게 대강 만드는"
+    },
+    {
+     "id": "haerae/Rare Words/260",
+     "overlap": 0.143,
+     "text": "크고 둥근 상에 음식을 차려 놓고 여럿이 둘러앉아 먹음의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#513564",
+     "match": "크고 둥근 상에 음식을 차려 놓고 여럿이 둘러앉아"
+    },
+    {
+     "id": "haerae/Rare Words/335",
+     "overlap": 0.143,
+     "text": "많은 사람이 줄을 지어 길게 늘어선 모양을 이르는 말의 의미를 가진 단어로 알맞은 것은?",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#5371253",
+     "match": "많은 사람이 줄을 지어 길게 늘어선 모양을 이르는"
     },
     {
      "id": "haerae/Reading Comprehension/309",
@@ -488,18 +553,81 @@
      "match": "사냥매를 도둑맞는 일이 잦아졌다 이 때문에 서로 자기"
     },
     {
-     "id": "haerae/General Knowledge/141",
-     "overlap": 0.059,
-     "text": "다음은 한 영화의 명대사이다. 이 영화에 대한 설명으로 옳지 않은 것을 고르시오. ### 참고:\"지금까지 이런 맛은 없었다. 이것은 갈비인가. 통닭인가? 네, 수원 왕갈비 통닭입니다.\"",
-     "evidence": "heegyu/namuwiki-extracted#428177",
-     "match": "지금까지 이런 맛은 없었다 이것은 갈비인가 통닭인가 네"
+     "id": "haerae/Reading Comprehension/428",
+     "overlap": 0.115,
+     "text": "다음을 읽고 글 앞에 있을 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 이와 같은 육아 휴직은 근로자의 육아부담을 줄이고 출산 후에도 계속 근무를 할 수 있도록 지원하여 근로자의 고용을 안정적으로 유지하기 위해 도입되었다. 육아휴직 기간은 1년 이내로, 육아휴직 기간 동안 매",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2333142",
+     "match": "육아휴직 기간은 1년 이내로 육아휴직 기간 동안 매월"
+    },
+    {
+     "id": "haerae/Reading Comprehension/418",
+     "overlap": 0.09,
+     "text": "다음을 읽고 내용과 같지 않은 것을 고르십시오.  ### 참고: 손을 잘 씻는 데도 요령이 있다. 비누를 사용해 흐르는 물로 올바른 방법에 따라 씻는다면 손에 남아 있는 세균의 약 99.8%를 제거할 수 있다. 먼저 비누 거품을 충분히 내어서 손과 팔목까지 꼼꼼히문질러 닦고 흐르는 물에",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1046458",
+     "match": "비누를 사용해 흐르는 물로 올바른 방법에 따라 씻는다면"
     },
     {
      "id": "haerae/Reading Comprehension/431",
-     "overlap": 0.035,
+     "overlap": 0.081,
      "text": "다음을 읽고 글 뒤에 이어질 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 대한민국에서는 국경일과 그 밖의 지정일에 태극기를 게양하도록 하고 있다. 태극기가 게양되는날은 1월 1일(새해 첫날), 3월 1일(3.1절), 6월 6일(현충일), 7월 17일(제헌절), 8월 15일(광",
-     "evidence": "heegyu/namuwiki-extracted#186989",
-     "match": "6월 6일 현충일 7월 17일 제헌절 8월 15일"
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1380208",
+     "match": "3월 1일 3 1절 6월 6일 현충일 7월"
+    },
+    {
+     "id": "haerae/Reading Comprehension/368",
+     "overlap": 0.061,
+     "text": "다음을 읽고 글 앞에 있을 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 어떤 기준을 먼저 제시하는가는 삶에 대해 생각하는 방식에도 영향을 미칠 수 있다. 한 실험에서 두 질문이 이 같은 순서로 제시됐을 때, 두 질문의 상관관계는 11%로 매우 낮았다. 그러나 두 질문의 순서를",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1063775",
+     "match": "삶에 대해 생각하는 방식에도 영향을 미칠 수 있다"
+    },
+    {
+     "id": "haerae/Reading Comprehension/370",
+     "overlap": 0.058,
+     "text": "다음을 읽고 글 뒤에 이어질 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 레드오션은 오늘날 존재하는 모든 산업, 즉 기존의 시장을 뜻한다. 반면 블루오션은 현재 존재하지 않는 모든 산업을 나타내며 아직 우리가 모르고 있는 시장 공간이다. 기업들은 기존의 시장에서보다 큰 점유율",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2308293",
+     "match": "블루오션은 현재 존재하지 않는 모든 산업을 나타내며 아직"
+    },
+    {
+     "id": "haerae/Reading Comprehension/423",
+     "overlap": 0.056,
+     "text": "다음을 읽고 글의 중심 생각을 고르십시오.  ### 참고: 게임의 한 형태로, ‘치킨(chicken) 게임’이 있다. 선수 A와 B가 자동차를 타고 서로 정면으로 충돌하는 상황을 생각해 보자. 만일 양쪽이 계속 달린다면 양쪽 모두 죽게 되는데 이것이 가장 나쁜 결과이다. 만일 한 쪽이 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3921458",
+     "match": "선수 a와 b가 자동차를 타고 서로 정면으로 충돌하는"
+    },
+    {
+     "id": "haerae/General Knowledge/41",
+     "overlap": 0.035,
+     "text": "표는 세 시기의 인구 정책 표어를 나타낸 것이다. (가)~(다) 를 이른 시기부터 순서대로 나열한 것은?  ### 참고:(가): •많이 낳아 고생 말고 적게 낳아 잘 키우자 •덮어 놓고 낳다 보면 거지꼴을 못 면한다 (나): •가가호호 아이 둘 셋 하하호호 희망 한국 •한 자녀보다는 둘",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1397920",
+     "match": "많이 낳아 고생 말고 적게 낳아 잘 키우자"
+    },
+    {
+     "id": "haerae/Reading Comprehension/375",
+     "overlap": 0.026,
+     "text": "다음을 읽고 글을 쓴 목적으로 가장 알맞은 것을 고르십시오.  ### 참고: 이문석 선생의 『30년 만의 휴가』는 모순된 삶의 수수께끼를 푸는 귀중한 열쇠를 마치 다정한 친구처럼 부드러운 음성과 몸짓으로 넌지시 쥐어 주는 책이다. 저자는 우리 각자의 내면에 간직된 보이지 않는 힘의 실체",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#103242",
+     "match": "자신에 대한 이해를 통해 각자의 무거운 심적 부담에서"
+    },
+    {
+     "id": "haerae/Reading Comprehension/263",
+     "overlap": 0.025,
+     "text": "무엇에 대한 글인지 맞는 것을 고르십시오.  ### 참고: ‘더도 말고 덜도 말고 늘 한가위만 같아라.’는 추석과 관련된 속담이다. 한가위는 추석을 의미하는데 ‘크다’는 뜻의 ‘한’과 ‘8월의 한가운데’ 또는 가을의 ‘가운데’라는 뜻의 ‘가위’가 만나서 ‘한가위’가되었다. 그래서 ‘한가",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#792703",
+     "match": "더도 말고 덜도 말고 늘 한가위만 같아라 는"
+    },
+    {
+     "id": "haerae/Reading Comprehension/264",
+     "overlap": 0.024,
+     "text": "다음 중 교육부에서 발표한 직접적인 내용이 아닌 것을 고르십시오.  ### 참고: ‘더도 말고 덜도 말고 늘 한가위만 같아라.’는 추석과 관련된 속담이다. 한가위는 추석을 의미하는데 ‘크다’는 뜻의 ‘한’과 ‘8월의 한가운데’ 또는 가을의 ‘가운데’라는 뜻의 ‘가위’가 만나서 ‘한가위’",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#792703",
+     "match": "더도 말고 덜도 말고 늘 한가위만 같아라 는"
+    },
+    {
+     "id": "haerae/Reading Comprehension/399",
+     "overlap": 0.022,
+     "text": "다음을 읽고 글 앞에 있을 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 이처럼 우리의 부엌에 자리하고 있는 수많은 도구들은 기나긴 역사와 수많은 발명들이 쌓인결과이다. 젓가락도 예외는 아니다. 오래 전부터 젓가락을 사용해온 한국, 중국, 일본의 젓가락이제각각 다르다는 사실은 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#438074",
+     "match": "중간 정도이고 끝부분이 약간 납작한 네모인데 무거운 반찬을"
     },
     {
      "id": "haerae/Reading Comprehension/143",
@@ -516,14 +644,43 @@
      "match": "수영을 하기 전에는 반드시 준비 운동을 해야 합니다"
     },
     {
-     "id": "haerae/Reading Comprehension/428",
+     "id": "haerae/Reading Comprehension/345",
+     "overlap": 0.02,
+     "text": "다음을 읽고 글의 제목으로 가장 알맞은 것을 고르십시오.  ### 참고: 퓨전은 서로 다른 두 종류 이상의 것을 섞어 새롭게 만든 것을 말한다. 이 말은 서양의 음악에서먼저 사용되었다. 1970년대의 백인 재즈 음악가들이 재즈(jazz), 록(rock) 등의 여러 가지 음악적 요소와 스",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3978570",
+     "match": "서로 다른 두 종류 이상의 것을 섞어 새롭게"
+    },
+    {
+     "id": "haerae/Reading Comprehension/352",
+     "overlap": 0.016,
+     "text": "다음을 읽고 순서대로 맞게 배열한 것을 고르십시오.  ### 참고: (가) 오늘날 우리는 서양식 가로쓰기 방식으로 글을 쓰고 읽으며 이 방식대로 그림을 본다. 이때 시선은 왼편에서 오른편으로, 그리고 위에서 아래로 이동한다. 즉, 영어의 알파벳 ‘X’자를 쓰듯이그림을 감상한다.(나) 이",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3648993",
+     "match": "중요한 자리는 오른쪽 상단이고 왼쪽 하단은 상대적으로 덜"
+    },
+    {
+     "id": "haerae/Reading Comprehension/233",
+     "overlap": 0.014,
+     "text": "다음을 읽고 중심 생각을 고르십시오.  ### 참고: 꽃병의 꽃을 오래 두려면 꽃병에 10원짜리 동전을 2~3개 넣어두면 된다. 그리고 욕실의 거울에비누나 샴푸를 바른 후에 닦으면 거울을 깨끗하게 유지할 수 있다. 양파를 재료로 요리를 할 때 양파를 자르거나 벗기면 눈물이 나는데 이때 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3700899",
+     "match": "오래 두려면 꽃병에 10원짜리 동전을 2 3개 넣어두면"
+    },
+    {
+     "id": "haerae/Reading Comprehension/392",
      "overlap": 0.011,
-     "text": "다음을 읽고 글 앞에 있을 내용으로 가장 알맞은 것을 고르십시오.  ### 참고: 이와 같은 육아 휴직은 근로자의 육아부담을 줄이고 출산 후에도 계속 근무를 할 수 있도록 지원하여 근로자의 고용을 안정적으로 유지하기 위해 도입되었다. 육아휴직 기간은 1년 이내로, 육아휴직 기간 동안 매",
-     "evidence": "heegyu/namuwiki-extracted#32917",
-     "match": "업무 또는 동등한 수준의 임금을 지급하는 직무에 복귀시켜야"
+     "text": "다음을 읽고 글의 중심 생각을 고르십시오.  ### 참고: 국민건강영양조사에 따르면 하루 1회 이상 외식하는 한국인은 지난해에 비해 6.5% 증가한 31.7%를 기록했다. 이처럼 외식으로 먹는 음식은 영양소가 불균형하게 포함되어 있으며 나트륨, 지방 등이 지나치게 들어있는 경우가 많다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3091491",
+     "match": "먹는 음식은 영양소가 불균형하게 포함되어 있으며 나트륨 지방"
+    },
+    {
+     "id": "haerae/Reading Comprehension/322",
+     "overlap": 0.006,
+     "text": "다음을 읽고 순서대로 맞게 배열한 것을 고르십시오.  ### 참고: (가) 서울 올림픽공원에서 지난 15일 열린 록 페스티벌의 마지막 무대는 김정운이 장식했다. 올해19집 앨범으로 세대를 뛰어넘어 호응을 얻은 김정운의 첫 록 페스티벌 출연으로 기대를 모은공연이었다. (나) 앙코르 무대는",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2530145",
+     "match": "부르다 객석으로 내려가 관객과 손을 마주치기도 했다 마지막"
     }
    ],
    "sources": {
+    "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)": 27,
     "heegyu/namuwiki-extracted": 8,
     "wikimedia/wikipedia/20231101.ko": 3,
     "maywell/korean_textbooks/mmlu_anatomy": 2,
@@ -561,8 +718,8 @@
   "boolq_passage": {
    "items": 1404,
    "checkable": 1404,
-   "flagged": 1059,
-   "any_match": 1262,
+   "flagged": 1091,
+   "any_match": 1282,
    "examples": [
     {
      "id": "kobest/boolq/0",
@@ -573,10 +730,10 @@
     },
     {
      "id": "kobest/boolq/1",
-     "overlap": 0.938,
+     "overlap": 1.0,
      "text": "주택임대차보호법은 주거용 건물의 임대차에 관하여 민법에 대한 특례를 규정함으로써 국민의 주거생활의 안정을 보장할 목적으로 제정된 법률이다. 토지의 경우 법률상의 주택이 아니므로 적용대상이 아니다.",
-     "evidence": "wikimedia/wikipedia/20231101.ko#76621",
-     "match": "주거용 건물의 임대차에 관하여 민법에 대한 특례를 규정함으로써"
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#410387",
+     "match": "주택임대차보호법은 주거용 건물의 임대차에 관하여 민법에 대한 특례를"
     },
     {
      "id": "kobest/boolq/2",
@@ -593,11 +750,11 @@
      "match": "사회적 거리두기는 기침이나 재채기 등의 비말 감염의 경우에"
     },
     {
-     "id": "kobest/boolq/5",
-     "overlap": 0.8,
-     "text": "보통선거는 연령 이외의 자격 조건을 두지 않고 국민 모두에게 선거권이 주어지는 선거를 말한다. 여성의 참정권이 일반화된 현재에는 연령 (보통 18세에서 20세 이상)만을 자격조건으로 보는 것이 일반적이다. 보통선거라도 범죄자에게는 투표권이 주어지지 않는다.",
-     "evidence": "wikimedia/wikipedia/20231101.ko#52506",
-     "match": "연령 이외의 자격 조건을 두지 않고 국민 모두에게"
+     "id": "kobest/boolq/4",
+     "overlap": 0.571,
+     "text": "고위공직자범죄수사처는 고위 공직자 및 대통령 친인척의 범죄행위를 상시적으로 수사·기소할 수 있는 독립된 국가기관이다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3046914",
+     "match": "고위 공직자 및 대통령 친인척의 범죄행위를 상시적으로 수사"
     }
    ],
    "partial": [
@@ -607,13 +764,6 @@
      "text": "콩포트는 17세기 프랑스에서 유래한 후식의 일종으로 과일과 시럽으로 만들어 먹는 후식이다. 프랑스어로 콩포트는 \"섞기\"를 의미한다. 모든 과일을 물에 섞고 설탕과 향신료 따위를 약열로 준비해 먹는다. 모든 과일을 물에 섞고 설탕과 향신료 따위를 약열로 준비해 먹는다. 시럽에는 바닐라, ",
      "evidence": "wikimedia/wikipedia/20231101.ko#166989",
      "match": "17세기 프랑스에서 유래한 후식의 일종으로 과일과 시럽으로 만들어"
-    },
-    {
-     "id": "kobest/boolq/94",
-     "overlap": 0.491,
-     "text": "아세트아미노펜 또는 파라세타몰은 타이레놀, 펜잘큐, 판피린 등의 주성분으로 해열 진통 작용을 한다. 아세트아미노펜과 파라세타몰 모두 그 화학명인 para-acetylaminophenol의 줄임말이다. 두통과 해열 및 기타 통증 완화에 효과적이며, 위장장애에 대한 부담이 적다. 다만, 음",
-     "evidence": "wikimedia/wikipedia/20231101.ko#81382",
-     "match": "아세트아미노펜과 파라세타몰 모두 그 화학명인 para acetylaminophenol의 줄임말이다"
     },
     {
      "id": "kobest/boolq/354",
@@ -658,6 +808,13 @@
      "match": "그 수보다 작거나 같은 모든 양의 정수의 곱이다"
     },
     {
+     "id": "kobest/boolq/946",
+     "overlap": 0.484,
+     "text": "말라리아는 말라리아 모기가 옮기는 전염병으로, 매년 2억에서 3억 명의 사람이 감염되고 수백만 명이 사망하는 위험한 질병이다. 조선 시대 이전부터 한반도에서도 흔한 병이었다. 모든 종류의 말라리아에서 나타나는 공통적인 초기 징후들은 독감 같은 증상들, 염증, 위장염, 그리고 바이러스성 ",
+     "evidence": "wikimedia/wikipedia/20231101.ko#2375",
+     "match": "옮기는 전염병으로 매년 2억에서 3억 명의 사람이 감염되고"
+    },
+    {
      "id": "kobest/boolq/185",
      "overlap": 0.483,
      "text": "1999년 이즈미트 지진은 1999년 8월 17일 터키 북서부 이즈미트 지방에서 발생한 리히터 7.8의 지진이다. 15,000여 명이 숨지고 25,000여 명이 부상당했다. 이 강진은 1980년대 이래 이란·아르메니아·아프가니스탄 등으로 이어지는 지역에서 발생한 지진 대참사 가운데 하나",
@@ -672,39 +829,11 @@
      "match": "솜브레로 sombrero 는 멕시코 페루 등에서 쓰는 모자이다"
     },
     {
-     "id": "kobest/boolq/1028",
-     "overlap": 0.481,
-     "text": "닷지는 크라이슬러의 자동차 브랜드이며, 승용차, 픽업 트럭, 미니밴, SUV차량 등을 제작, 판매하고 있다. 미국 최초의 자동차 회사였던 올즈모빌에 변속기를 공급하고, 포드에 엔진을 제작하여 공급하면서 자동차 부품업체로 발전하게 된다. 이후 포드 모델 T를 만드는 과정에서 헨리 포드와의",
-     "evidence": "wikimedia/wikipedia/20231101.ko#119225",
-     "match": "미국 최초의 자동차 회사였던 올즈모빌에 변속기를 공급하고 포드에"
-    },
-    {
-     "id": "kobest/boolq/108",
-     "overlap": 0.48,
-     "text": "셜록 홈즈(Sherlock Holmes) (1854년 ~ 1957년)는 아서 코난 도일의 추리 소설 시리즈에 등장하는 주인공이다. 셜록 홈즈는 19세기 말에서 20세기 초의 영국을 무대로 하는 가상의 탐정으로 아직도 전 세계에 많은 팬이 있다.",
-     "evidence": "wikimedia/wikipedia/20231101.ko#40779",
-     "match": "1854년 1957년 는 아서 코난 도일의 추리 소설"
-    },
-    {
-     "id": "kobest/boolq/127",
-     "overlap": 0.478,
-     "text": "피사의 사탑은 이탈리아 서부 토스카나주의 피사에 있는 피사 대성당의 종루로, 기울어진 탑으로 유명하다. 공사기간은 제1차가 1173년~1178년, 제2차가 1272년~1278년, 제3차가 1360년~1372년으로 공사기간 간격이 매우 긴 것이 특징이다. 특히 제1차 공사 후 탑이 기울기",
-     "evidence": "wikimedia/wikipedia/20231101.ko#11444",
-     "match": "간격이 매우 긴 것이 특징이다 특히 제1차 공사"
-    },
-    {
      "id": "kobest/boolq/277",
      "overlap": 0.478,
      "text": "아라연꽃은 2009년 5월 경상남도 함안군 성산산성에서 발굴된 연꽃 씨앗에서 발아한 연꽃이다. 한국지질자원연구소에 의뢰해 성분분석한 결과 각 650~760년전, 즉 고려 시대 연꽃 씨인 것으로 확인되었다. 함안 지역이 본래 옛 아라가야가 있었던 곳이었기 때문에 이 연꽃을 '아라연꽃'이라",
      "evidence": "maywell/korean_textbooks/ko_wikidata#50976",
      "match": "아라연꽃은 2009년 5월 경상남도 함안군 성산산성에서 발굴된 연꽃"
-    },
-    {
-     "id": "kobest/boolq/1030",
-     "overlap": 0.478,
-     "text": "재택학습 또는 홈스쿨링/홈스쿨은 학교에 보내지 않고 집에서 학습을 하는 대안교육중의 하나이다. 나라마다 합법인 경우도 있고, 불법인 경우도 있다. 최근에는 미국에서 보통 학교 학습에 대한 비판이 많아서 자택학습이 증가 추세이다.",
-     "evidence": "wikimedia/wikipedia/20231101.ko#141212",
-     "match": "나라마다 합법인 경우도 있고 불법인 경우도 있다 최근에는"
     },
     {
      "id": "kobest/boolq/1012",
@@ -728,6 +857,13 @@
      "match": "차량 축처럼 샤프트의 회전을 지연시키는 마찰력을 만들기 위해"
     },
     {
+     "id": "kobest/boolq/96",
+     "overlap": 0.474,
+     "text": "인대는 관절 움직임을 활성화하여 그 지원을 제공하고 운동을 억제하는 결체 조직 섬유이며, 다량의 교질과 탄력성 섬유가 들어 있어 탄력성이 있다. 인대는 힘줄, 그리고 근막과 비슷하나, 뼈와 근육을 연결하는 힘줄과는 달리 인대는 뼈와 뼈를 연결하며, 근막은 근육과 근육을 연결한다. 인대는",
+     "evidence": "wikimedia/wikipedia/20231101.ko#131677",
+     "match": "관절 움직임을 활성화하여 그 지원을 제공하고 운동을 억제하는"
+    },
+    {
      "id": "kobest/boolq/1006",
      "overlap": 0.474,
      "text": "세계보건기구(WHO)는 국제 공중보건을 책임지는 유엔의 전문 기구이다. 2020년 기준으로 194개 회원국이 WHO에 가맹되었으며, 그 목적은 세계 인류가 가능한 한 최고의 건강 수준에 도달하는 것이다.",
@@ -742,11 +878,25 @@
      "match": "얇게 썬 쇠고기와 양파를 버터로 볶아 적포도주와 토마토"
     },
     {
+     "id": "kobest/boolq/36",
+     "overlap": 0.472,
+     "text": "6.25 전쟁 또는 한국 전쟁은 1950년 6월 25일 오전 4시에 조선민주주의인민공화국이 기습적으로 대한민국을 침공하여 발발한 전쟁이다. 유엔군과 중국인민지원군 등이 참전하여 세계적인 대규모 전쟁으로 비화될 뻔 하였으나, 1953년 7월 27일 22시에 체결된 한국휴전협정에 따라 일단",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3459884",
+     "match": "1950년 6월 25일 오전 4시에 조선민주주의인민공화국이 기습적으로 대한민국을"
+    },
+    {
      "id": "kobest/boolq/1381",
      "overlap": 0.472,
      "text": "페르세포네는 들판에서 님프들과 꽃을 따던 중 명계의 왕 하데스에게 납치되어 명부로 끌려가 강제로 명계의 여왕이 되었다. 하데스는 페르세포네를 지상에 올려보내기 전에 석류의 씨를 몇 알 먹였다. 그 결과 지하세계의 음식을 먹은 대가로 페르세포네는 지상으로 완전히 돌아가지 못하고 지상과 지",
      "evidence": "maywell/korean_textbooks/ko_wikidata#54263",
      "match": "들판에서 님프들과 꽃을 따던 중 명계의 왕 하데스에게"
+    },
+    {
+     "id": "kobest/boolq/158",
+     "overlap": 0.471,
+     "text": "동물학대란 자기방어나 생존이 아닌 이유로 사람을 제외한 모든 동물에게 고통을 가하는 것을 말한다. 일반적으로 화풀이, 재미, 고기, 모피, 돈을 얻기 위해 학대하는 경우가 있다. 보통 어딘가에 가둬 놓거나, 폭력 등을 행사하는 것은 물론, 방치시키기 또는 강제적인 수술도 있으며, 원치 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1251562",
+     "match": "동물학대란 자기방어나 생존이 아닌 이유로 사람을 제외한 모든"
     },
     {
      "id": "kobest/boolq/204",
@@ -763,6 +913,13 @@
      "match": "사회적으로 가장 큰 화두가 되고 있는 혼전 임신으로"
     },
     {
+     "id": "kobest/boolq/753",
+     "overlap": 0.467,
+     "text": "마틸다는 학교를 늦게 입학했지만, 다른 아이들보다 더 영리했다. 하지만 마틸다의 학교의 교장선생님은 성격이 괴팍했다. 그래서 그녀의 교장선생님은 아이들 모두 똑똑하지 않다고 생각했다. 그에 반해 마틸다의 담임 허니 선생은 아이들의 개성 하나하나를 이해하고 존중했다. 새로 온 마틸다의 재",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4105252",
+     "match": "다른 아이들보다 더 영리했다 하지만 마틸다의 학교의 교장선생님은"
+    },
+    {
      "id": "kobest/boolq/1137",
      "overlap": 0.467,
      "text": "여성주의 경제학은 종종 권력 관계가 경제 내에 존재한다고 주장하기 때문에 이전에 경제 모델에서 간과되었던 방식으로 평가되어야 한다. 여성주의 경제학자들은 권력 관계가 사회의 고유하고 중요한 특징이라고 주장하면서 이러한 비판을 사회 세계의 여러 측면으로 확장하는 경우가 많다. 그들은 자본",
@@ -777,11 +934,25 @@
      "match": "와 비슷하거나 똑같기 때문에 불길하다고 하는 것이다 4와"
     },
     {
+     "id": "kobest/boolq/694",
+     "overlap": 0.463,
+     "text": "2차 세계대전, 일본의 한 마을에 폭격기로 인한 대공습이 일어난다. 마을이 화염으로 휩싸이자, 14살인 세이타는 부모님과 따로 만나기로 약속한 채 4살짜리 여동생 세쓰코를 업고 피신한다. 결국, 집과 어머니를 잃고 먼 친척아주머니의 집으로 향하는 세이타와 세쓰코. 힘들고 어려운 환경에서",
+     "evidence": "wikimedia/wikipedia/20231101.ko#193414",
+     "match": "2차 세계대전 일본의 한 마을에 폭격기로 인한 대공습이"
+    },
+    {
      "id": "kobest/boolq/1303",
      "overlap": 0.462,
      "text": "임신이란 포유류의 태아가 수정란이 자궁에 착상된 때부터 자궁 밖으로 나올 때까지의 상태를 말한다. 정자와 난자의 결합에 의해 수정된 수정란은 자궁에 착상되며 이때부터 임신이 시작되어 출산, 유산, 낙태 등으로 끝난다. 임신우울증은 일반적으로 임신 6개월 정도부터 시작된다. 임신 중기 이",
      "evidence": "wikimedia/wikipedia/20231101.ko#6242",
      "match": "포유류의 태아가 수정란이 자궁에 착상된 때부터 자궁 밖으로"
+    },
+    {
+     "id": "kobest/boolq/1367",
+     "overlap": 0.462,
+     "text": "오트밀은 귀리의 겉겨를 벗기고 가공한 음식을 가리키는 말로, 납작귀리, 자른귀리, 분쇄귀리 등이 있다. \"오트밀\"이 오트밀 포리지를 뜻하기도 한다. 이는 포리지의 일종으로, 오트밀로 죽을 쑤어 소금과 설탕, 우유 등을 넣어 먹는 서양 요리이다.",
+     "evidence": "wikimedia/wikipedia/20231101.ko#142317",
+     "match": "귀리의 겉겨를 벗기고 가공한 음식을 가리키는 말로 납작귀리"
     },
     {
      "id": "kobest/boolq/959",
@@ -854,11 +1025,11 @@
      "match": "단백질이 신장에서 걸러지지 않고 소변을 통해 체외로 배출되는"
     },
     {
-     "id": "kobest/boolq/96",
+     "id": "kobest/boolq/1055",
      "overlap": 0.447,
-     "text": "인대는 관절 움직임을 활성화하여 그 지원을 제공하고 운동을 억제하는 결체 조직 섬유이며, 다량의 교질과 탄력성 섬유가 들어 있어 탄력성이 있다. 인대는 힘줄, 그리고 근막과 비슷하나, 뼈와 근육을 연결하는 힘줄과는 달리 인대는 뼈와 뼈를 연결하며, 근막은 근육과 근육을 연결한다. 인대는",
-     "evidence": "wikimedia/wikipedia/20231101.ko#131677",
-     "match": "관절 움직임을 활성화하여 그 지원을 제공하고 운동을 억제하는"
+     "text": "스페인 문학의 기원은 카스티야 왕국을 거점으로 하여 12세기부터 시작된다. 8세기 초에 이베리아 반도에 침입한 무어인들을 축출하기 위하여 800년이나 소위 재정복전을 벌였는데 이동안에 카스티야 왕국이 중추적 역할을 하면서 국토통일의 성업을 완수했던 것이다. 이로 인해서 카스티야어가 에스",
+     "evidence": "wikimedia/wikipedia/20231101.ko#93172",
+     "match": "스페인 문학의 기원은 카스티야 왕국을 거점으로 하여 12세기부터"
     },
     {
      "id": "kobest/boolq/219",
@@ -873,13 +1044,6 @@
      "text": "라흐마니노프는 후기 낭만파에 속하는 작품을 썼다. 그의 작품은 다양한 악곡 형식과 장르를 포괄하지만, 그 안에서도 슬라브적인 경향이 짙게 나타난다. 그는 비록 명백히 쇼팽과 리스트의 영향을 받았지만, 그의 작품 대부분은 차이콥스키와 비슷한 후기 낭만파 양식이다. 1895년에 완성된 1번",
      "evidence": "wikimedia/wikipedia/20231101.ko#19004",
      "match": "라흐마니노프는 후기 낭만파에 속하는 작품을 썼다 그의 작품은"
-    },
-    {
-     "id": "kobest/boolq/751",
-     "overlap": 0.436,
-     "text": "손기정은 일제 강점기 때 활약한 한국인 육상 선수이자 체육인이다. 손기정은 42.195km를 2시간 29분 19.2초에 주파해 당시 세계 신기록을 세우며 금메달을 땄다.  1936년 당시에는 대한제국이 일본의 지배 아래에 있었기 때문에 그는 일본 대표팀에서 뛰어야 했고, 이름의 로마자 ",
-     "evidence": "wikimedia/wikipedia/20231101.ko#15924",
-     "match": "손기정은 42 195km를 2시간 29분 19 2초에 주파해"
     },
     {
      "id": "kobest/boolq/1324",
@@ -910,11 +1074,11 @@
      "match": "이 공격으로 13명의 미군 병사를 포함 최소 103명이"
     },
     {
-     "id": "kobest/boolq/4",
+     "id": "kobest/boolq/830",
      "overlap": 0.429,
-     "text": "고위공직자범죄수사처는 고위 공직자 및 대통령 친인척의 범죄행위를 상시적으로 수사·기소할 수 있는 독립된 국가기관이다.",
-     "evidence": "heegyu/namuwiki-extracted#292185",
-     "match": "공직자 및 대통령 친인척의 범죄행위를 상시적으로 수사 기소할"
+     "text": "베이컨은 돼지고기를 이용해 만든 육류 식품이며, 보통은 소금에 절여 만들어진다. 돼지고기 이외에도 쇠고기, 양고기, 닭고기, 염소고기, 칠면조고기 등이 베이컨으로 가공될 수 있다. 제일 먼저 돼지고기를 많은 양의 소금을 이용하여, 소금물로 또는 마른 상태에서 포장해 절이며 그 결과물로 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#622088",
+     "match": "돼지고기를 이용해 만든 육류 식품이며 보통은 소금에 절여"
     },
     {
      "id": "kobest/boolq/883",
@@ -931,13 +1095,6 @@
      "match": "과정에서 폐위된 인현왕후가 복위하고 희빈 장씨가 왕비의 자리에서"
     },
     {
-     "id": "kobest/boolq/727",
-     "overlap": 0.424,
-     "text": "경희궁은 경복궁, 창경궁과 함께 조선왕조의 3대궁으로 꼽힐 만큼 큰 궁궐이었으며 본래는 100여 동이 넘는 전각들이 있었으나 일제 강점기에 심하게 훼손되어 현재 남아있는 건물은 정문이었던 흥화문과 정전이었던 숭정전, 그리고 후원의 정자였던 황학정까지 세 채에 불과하다. 5대궁 가운데 가",
-     "evidence": "wikimedia/wikipedia/20231101.ko#16791",
-     "match": "경희궁은 경복궁 창경궁과 함께 조선왕조의 3대궁으로 꼽힐 만큼"
-    },
-    {
      "id": "kobest/boolq/597",
      "overlap": 0.421,
      "text": "《김약국의 딸들》(金藥局- )은 박경리가 지은 장편소설이다. 1962년 을유문화사에서 처음 간행되였다. 구한말에서 일제 강점기(1930년대)까지를 배경으로 통영의 유지 김약국네와 그 다섯 딸의 흥망성쇠를 그려내고 있다.",
@@ -945,15 +1102,16 @@
      "match": "김약국의 딸들 金藥局 은 박경리가 지은 장편소설이다 1962년"
     },
     {
-     "id": "kobest/boolq/946",
-     "overlap": 0.419,
-     "text": "말라리아는 말라리아 모기가 옮기는 전염병으로, 매년 2억에서 3억 명의 사람이 감염되고 수백만 명이 사망하는 위험한 질병이다. 조선 시대 이전부터 한반도에서도 흔한 병이었다. 모든 종류의 말라리아에서 나타나는 공통적인 초기 징후들은 독감 같은 증상들, 염증, 위장염, 그리고 바이러스성 ",
-     "evidence": "wikimedia/wikipedia/20231101.ko#2375",
-     "match": "옮기는 전염병으로 매년 2억에서 3억 명의 사람이 감염되고"
+     "id": "kobest/boolq/733",
+     "overlap": 0.414,
+     "text": "교육학은 교사가 지도하는 일에 대한 기술과 연구를 의미하며, 일반적으로 교수의 전략이나 방법을 가리킨다. 넓은 의미에서 교육을 대상으로 하는 교육론을 포함하기도 한다. 또한 교육학은 교사가 학생과 상호 작용하는 방법과 교사가 설정하고자하는 사회적 및 지적 환경을 포함하기도 한다.",
+     "evidence": "wikimedia/wikipedia/20231101.ko#11918",
+     "match": "교사가 지도하는 일에 대한 기술과 연구를 의미하며 일반적으로"
     }
    ],
    "sources": {
     "wikimedia/wikipedia/20231101.ko": 1256,
+    "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)": 130,
     "maywell/korean_textbooks/ko_wikidata": 17,
     "heegyu/namuwiki-extracted": 9,
     "beomi/KoAlpaca-v1.1a": 4,
@@ -966,11 +1124,120 @@
   "hellaswag": {
    "items": 500,
    "checkable": 500,
-   "flagged": 0,
-   "any_match": 0,
-   "examples": [],
-   "partial": [],
-   "sources": {}
+   "flagged": 4,
+   "any_match": 15,
+   "examples": [
+    {
+     "id": "kobest/hellaswag/87",
+     "overlap": 0.545,
+     "text": "전기밥솥으로 현미밥을 잘 짓는 비결은 쌀과 물의 비율을 알맞게 해서 보슬보슬하고 부드러우며 맛있는 밥을 만드는 것이다. 전기밥솥은 한 끼 또는 일주일 분량의 조리를 빠르게 할 수 있어서 유용하다. 해당 조리법을 통해 전기밥솥으로 현미밥을 만들어보자. 우선, 조리할 분량의 현미를 계량한다",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1745606",
+     "match": "전기밥솥으로 현미밥을 잘 짓는 비결은 쌀과 물의 비율을"
+    },
+    {
+     "id": "kobest/hellaswag/245",
+     "overlap": 0.714,
+     "text": "타일이 노후됐든 무거운 물건을 떨어뜨려서 깨졌든, 바닥이나 조리대의 타일이 한 두 개 깨졌을 때는 굳이 타일을 교체할 필요는 없다. 타일교체 비용이 부담되거나 손상이 크지 않다면 간단하게 보수하면 된다. 머리카락 굵기 정도로 타일이 금이 갔다면 에폭시로 채워주면 된다. 우선 가까운 공구",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3792194",
+     "match": "타일이 노후됐든 무거운 물건을 떨어뜨려서 깨졌든 바닥이나 조리대의"
+    },
+    {
+     "id": "kobest/hellaswag/289",
+     "overlap": 0.82,
+     "text": "눈이 많이 오거나 미끄러운 도로에서 운전을 해야할 때, 안전하게 운전을 하기 위해서 스노우 체인이 매우 유용한 역할을 할 수 있습니다. 가파르거나 산악 지대에서는 스노우 체인이 있어야지만 운전을 할 수 있는 경우도 있습니다. 스노우 체인을 장착시키고 다시 푸르는 것은 어려워 보일 수 있",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2755953",
+     "match": "눈이 많이 오거나 미끄러운 도로에서 운전을 해야할 때"
+    },
+    {
+     "id": "kobest/hellaswag/468",
+     "overlap": 0.836,
+     "text": "앉기, 기다리기, 엎드리기, 이름을 부르면 오기, 그리고 주인을 따라오기는 모든 애완견에게 가르쳐야 할 다섯 가지의 중요한 명령들이다. 이들은 애완견에게 주인이 원하는 것이 무엇인지 알려주며 특히 명확한 의사 소통 도구가 되어 줄 수 있다. 이러한 기본 명령 훈련을 훌륭하게 완수하면 개",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#4067669",
+     "match": "앉기 기다리기 엎드리기 이름을 부르면 오기 그리고 주인을"
+    }
+   ],
+   "partial": [
+    {
+     "id": "kobest/hellaswag/260",
+     "overlap": 0.457,
+     "text": "너무 많은 귀지가 내부에 계속 축적되면 귀가 막힐 수 있고 이는 청력을 저하시키는 원인이 될 수 있다. 아래 글을 읽고 귀를 청소하는 법과 과도한 귀지를 제거하는 방법을 배워보자. 귀 청소를 시작하기 전, 귀 감염 혹은 고막 파열이 없는지 확인하고, 귀지를 부드럽게 만들어주는 용액을 만",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#5247430",
+     "match": "너무 많은 귀지가 내부에 계속 축적되면 귀가 막힐"
+    },
+    {
+     "id": "kobest/hellaswag/272",
+     "overlap": 0.318,
+     "text": "방을 정확히 측정하는 것은 바닥재를 갈거나 벽지를 바꾸는 등 실내 환경 개선 작업을 할 때 많은 도움이 된다. 바닥의 면적을 측정하는 방법을 알아보자. 먼저 측정하려는 방의 그림을 그린다. 이 그림을 통해 방을 측정할 것이다. 그림이 정확할수록 더 편리하다. 옷장이나 화장실을 제외하고,",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2933577",
+     "match": "방을 정확히 측정하는 것은 바닥재를 갈거나 벽지를 바꾸는"
+    },
+    {
+     "id": "kobest/hellaswag/49",
+     "overlap": 0.312,
+     "text": "인터넷 상에서 유명해지고 싶다면 유튜브를 시작해 보는 것도 좋다. 경우에 따라서는 유튜브가 주수입원이 되기도 한다. 유튜브 채널을 만드는 방법을 알아보자. 일단 유튜브에 접속한 후 구글 계정으로 로그인해라. 유튜브 메인 화면 오른쪽 상단의 사용자 페이지를 클릭한 후, 크리에이터 스튜디오",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3308741",
+     "match": "인터넷 상에서 유명해지고 싶다면 유튜브를 시작해 보는 것도"
+    },
+    {
+     "id": "kobest/hellaswag/225",
+     "overlap": 0.304,
+     "text": "편도 결석은 편도 구멍에 생기는 황백색의 작은 침전물이다. 편도 결석은 편도 구멍에 쌓인 작은 음식물 조각에 기생하는 박테리아로 인해 발생하는 고약한 냄새가 나는 이물질인데, 편도 구멍이 깊은 사람에게는 자주 발견되는 편이다. 면봉을 가지고 편도 결석을 제거하는 방법에 대해 알아보자. ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3122756",
+     "match": "편도 결석은 편도 구멍에 생기는 황백색의 작은 침전물이다"
+    },
+    {
+     "id": "kobest/hellaswag/280",
+     "overlap": 0.258,
+     "text": "쌀가루를 직접 만들어 사용하면 돈을 절약할 수 있다. 쌀가루를 만들 때는 백미나 현미를 밀가루처럼 곱게 분쇄할 수 있는 믹서기를 사용한다. 쌀가루를 만들기 전에는 먼저 만들 쌀가루의 종류에 따라 현미 또는 백미를 구입한다. 그리고 준비한 믹서기에 구입한 쌀을 넣는다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#683198",
+     "match": "쌀가루를 직접 만들어 사용하면 돈을 절약할 수 있다"
+    },
+    {
+     "id": "kobest/hellaswag/472",
+     "overlap": 0.24,
+     "text": "식당에서 뇨끼 한 접시에 비싼 비용을 지불하는 것이 부담이 된다면, 집에서 한번 만들어보자! 우선 잘 씻은 감자를 큰 냄비에 넣고, 부드러워질 때까지 중강불에 20분간 끓여준다. 감자가 부드러워지면 냄비에서 꺼내어 껍질을 벗기고 갈아준다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2628669",
+     "match": "식당에서 뇨끼 한 접시에 비싼 비용을 지불하는 것이"
+    },
+    {
+     "id": "kobest/hellaswag/480",
+     "overlap": 0.167,
+     "text": "양파는 다양한 요리에 쓰이고 키우기도 쉽다. 그리고 또 양파의 밑부분을 잘라 흙 속에 심으면 그 잘린 부분으로 직접 양파를 키울 수도 있다. 양파 밑부분을 약 2.5cm 정도 자른다. 그리고 자른 양파의 밑부분을 12-24시간 동안 건조시킨다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2151892",
+     "match": "양파의 밑부분을 잘라 흙 속에 심으면 그 잘린"
+    },
+    {
+     "id": "kobest/hellaswag/268",
+     "overlap": 0.156,
+     "text": "새우는 데쳐 먹어도, 볶아 먹어도, 뒷마당에서 그릴에 구워 먹어도 맛있다. 새우 조리법을 알아보자. 대부분의 가게에서 생물 새우와 냉동 새우를 둘 다 취급한다. 둘 중 어느것을 구매해도 좋다. 일단 구매한 새우를 흐르는 물에 씻는다. 씻은 새우의 껍질을 벗기고 내장을 제거한다.",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2162209",
+     "match": "새우는 데쳐 먹어도 볶아 먹어도 뒷마당에서 그릴에 구워"
+    },
+    {
+     "id": "kobest/hellaswag/5",
+     "overlap": 0.1,
+     "text": "동지는 24절후의 스물두 번째 절기로, 밤이 가장 길고 낮이 가장 짧은 날에 해당한다. 동지에는 팥죽을 쑤어 먹기도 하는데, 이는 붉은색이 액운을 쫓는다고 믿었기 때문이다. 팥죽을 만드는 방법은 다음과 같다. 먼저 팥을 물에 6시간 정도 불려준다. 불린 팥을 냄비에 넣고 물을 넉넉히 붓",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#2846347",
+     "match": "동지는 24절후의 스물두 번째 절기로 밤이 가장 길고"
+    },
+    {
+     "id": "kobest/hellaswag/144",
+     "overlap": 0.022,
+     "text": "올바르게 손을 잘 씻는 것이 중요하다. 손 씻는 방법에 대해 알아보자. 먼저 손으로 비누 거품을 충분히 낸 후 손바닥과 손바닥을 서로 마주 대고 문질러 준다. 그리고 손등과 손바닥을 문질러 준다. 다음으로는 엄지 손가락을 다른 편 손바닥으로 돌려주면서 문질러 준다. 다음으로는 손바닥을 ",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#3536616",
+     "match": "엄지 손가락을 다른 편 손바닥으로 돌려주면서 문질러 준다"
+    },
+    {
+     "id": "kobest/hellaswag/106",
+     "overlap": 0.021,
+     "text": "집에서 과산화수소로 머리카락을 탈색하는 방법을 시도해볼 수 있다. 아래 글을 읽고 그 방법을 알아보자. 우선 소량의 머리카락에 미리 테스트를 해봐야 한다. 과산화수소를 묻힌 탈지면을 머리카락 아래 부분에 소량을 발라서 원하는 밝기를 위해서 사용할 과산화수소의 양을 파악할 수 있다. 테스",
+     "evidence": "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)#1607277",
+     "match": "과산화수소로 머리카락을 탈색하는 방법을 시도해볼 수 있다 아래"
+    }
+   ],
+   "sources": {
+    "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)": 15
+   }
   },
   "heldout": {
    "items": 36,
@@ -991,6 +1258,6 @@
    "sources": {}
   }
  },
- "flagged_total": 11,
- "seconds": 25
+ "flagged_total": 229,
+ "seconds": 24
 }

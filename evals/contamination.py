@@ -4,8 +4,8 @@
 SFT 검증 loss에서 그 일을 겪었다(annealing에 SFT 데이터를 넣었기 때문). 여기서는
 벤치마크(KMMLU · HAE-RAE · KOBEST)와 자체 문항을 학습 데이터와 대조한다:
 SFT(KoAlpaca · KULLM v2), annealing 교과서(maywell/korean_textbooks 17개 구성, mmlu_* 포함),
-위키백과(사전학습 10% · annealing 15%), 나무위키(annealing 15%), 그리고 사전학습 웹
-(FineWeb-2 ko, 75%)의 앞쪽 표본 9.7GB. 웹 전체(106GB)와 영어 FineWeb-Edu는 대상에 없다.
+위키백과(사전학습 10% · annealing 15%), 나무위키(annealing 15%), 사전학습 웹(FineWeb-2 ko
+train 전체, 사전학습 75% · annealing 23%). 영어 FineWeb-Edu만 대상에 없다.
 
 방법 (GPT-3·Llama 2의 n-gram 오염 검사와 같은 계열):
 - 텍스트를 NFKC 정규화 + 소문자로 바꾸고 문자·숫자(한글·한자·라틴·그리스 등)만 남겨
@@ -30,8 +30,9 @@ BoolQ 지문은 위키백과 문단이라 따로 'boolq_passage'로 잰다. 지�
 
 사용:
   python -m evals.contamination                              # SFT 데이터 대조 (수 분)
-  python -m evals.contamination --train koalpaca kullm textbooks wiki namuwiki web_sample \\
-      --out logs/contamination.json --out-ids evals/contaminated_ids.json   # 4코어 약 25분
+  python -m evals.contamination --train koalpaca kullm textbooks wiki namuwiki web \\
+      --out logs/contamination.json --out-ids evals/contaminated_ids.json   # 4코어 약 3.5시간
+  python -m evals.contamination --train web:0-1 ...         # 웹 파일 일부만 (정렬 순서 0~24)
   python -m evals.contamination --train-jsonl my_sft.jsonl   # 직접 만든 데이터
   # 나눠서 훑고 합치기: 출처마다 --save-found, 마지막에 --train 없이 --load-found a.json b.json
 
@@ -143,11 +144,18 @@ TRAIN_SOURCES = {
     "kullm": [("nlpai-lab/kullm-v2", None, ("instruction", "input", "output"))],
     "wiki": [("wikimedia/wikipedia", "20231101.ko", ("text",))],         # 1.4GB
     "namuwiki": [("heegyu/namuwiki-extracted", None, ("text",))],      # 9.7GB
-    # 사전학습 웹(FineWeb-2 ko, parquet 25개 106GB)은 전체를 훑기엔 커서 앞쪽 파일 2개(9.7GB)만
-    # 표본으로 본다. data.prepare가 스트리밍으로 처음 읽는 부분이라 실제로 학습한 문서들이다.
-    "web_sample": [("parquet", [f"hf://datasets/HuggingFaceFW/fineweb-2/data/kor_Hang/train/"
-                                f"000_0000{k}.parquet" for k in (0, 1)], ("text",))],
 }
+WEB_DIR = "datasets/HuggingFaceFW/fineweb-2/data/kor_Hang/train"  # parquet 25개, 106GB
+
+
+def _web_parts(spec):
+    """사전학습 웹(FineWeb-2 ko train). "web"은 전체, "web:2-9"는 정렬 순서로 2~9번 파일.
+    파일마다 따로 읽어 근거가 '파일#행'으로 남는다 — 커서 나눠 훑을 때(--save-found) 쓴다."""
+    from huggingface_hub import HfFileSystem
+
+    files = sorted(f.rsplit("/", 1)[1] for f in HfFileSystem().ls(WEB_DIR, detail=False))
+    lo, hi = (0, len(files) - 1) if spec == "web" else map(int, spec[4:].split("-"))
+    return [("parquet", [f"hf://{WEB_DIR}/{fn}"], ("text",)) for fn in files[lo:hi + 1]]
 
 
 def _parts(name):
@@ -155,6 +163,8 @@ def _parts(name):
         from data.prepare_anneal import TEXTBOOK_PARTS  # annealing에 실제로 쓴 구성 그대로
 
         return [(ds, cfg, ("text",)) for ds, cfg in TEXTBOOK_PARTS]
+    if name == "web" or name.startswith("web:"):
+        return _web_parts(name)
     if name not in TRAIN_SOURCES:
         raise ValueError(f"모르는 학습 데이터: {name}")
     return TRAIN_SOURCES[name]
@@ -165,8 +175,8 @@ def iter_train(names, jsonl_paths=(), limit=None):
 
     for name in names:
         for ds_name, cfg, fields in _parts(name):
-            if isinstance(cfg, list):  # 파일 목록을 직접 읽는 표본 (web_sample)
-                src = "HuggingFaceFW/fineweb-2/kor_Hang (앞쪽 2파일)"
+            if isinstance(cfg, list):  # parquet 파일을 직접 읽는다 (웹)
+                src = "HuggingFaceFW/fineweb-2/kor_Hang/" + cfg[0].rsplit("/", 1)[1].removesuffix(".parquet")
                 rows = load_dataset(ds_name, data_files=cfg, split="train", streaming=True)
             else:
                 src = ds_name + (f"/{cfg}" if cfg else "")
@@ -321,7 +331,7 @@ def main():
                     default=["kmmlu", "haerae", "copa", "boolq", "hellaswag", "heldout", "math"])
     ap.add_argument("--train", nargs="*", default=["koalpaca", "kullm"],
                     help="koalpaca · kullm · textbooks(교과서 17개 구성) · wiki(1.4GB) · namuwiki(9.7GB) "
-                         "· web_sample(사전학습 웹 앞쪽 9.7GB)")
+                         "· web(사전학습 웹 106GB) · web:A-B(웹 A~B번 파일)")
     ap.add_argument("--train-jsonl", nargs="*", default=[])
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--limit", type=int, default=None, help="출처별 행 수 제한 (빠른 확인용)")
