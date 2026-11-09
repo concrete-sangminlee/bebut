@@ -39,7 +39,7 @@ BoolQ 지문은 위키백과 문단이라 따로 'boolq_passage'로 잰다. 지�
 사용:
   python -m evals.contamination                              # SFT 데이터 대조 (수 분)
   python -m evals.contamination --train koalpaca kullm textbooks wiki namuwiki web \\
-      --out logs/contamination.json --out-ids evals/contaminated_ids.json   # 4코어 약 3.5시간
+      --out logs/contamination.json --out-ids evals/contaminated_ids.json   # 4코어 약 3시간
   python -m evals.contamination --train web:0-1 ...         # 웹 파일 일부만 (정렬 순서 0~24)
   python -m evals.contamination --train-jsonl my_sft.jsonl   # 직접 만든 데이터
   # 나눠서 훑고 합치기: 출처마다 --save-found, 마지막에 --load-found a.json b.json
