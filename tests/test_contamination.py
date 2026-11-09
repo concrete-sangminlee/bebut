@@ -128,3 +128,98 @@ def test_passage_exposure_is_reported_but_not_excluded():
     res, ids = run([("wiki", 5, passage)], items=items)
     assert res["boolq_passage"]["contaminated"] == 1 and res["boolq"]["any_match"] == 0
     assert ids == []  # 지문 노출은 문항 노출이 아니다 — 채점에서 빼지 않는다
+
+
+def mc(item_id, q, answer, options, bench="kmmlu"):
+    return bench, item_id, q, (answer, options)
+
+
+BIO = ("담자균류", ["자낭균류", "담자균류", "조균류", "불완전균류"])
+
+
+def test_window_boundary():
+    """정답은 겹친 줄기 바로 뒤 WINDOW(200) 단어 안에 있어야 한다."""
+    def items():
+        yield mc("kmmlu/Biology/0", KMMLU_Q, *BIO)
+
+    assert run([("web", 0, f"{KMMLU_Q} " + "잡문 " * 199 + "담자균류")], items=items)[1] == ["kmmlu/Biology/0"]
+    assert run([("web", 0, f"{KMMLU_Q} " + "잡문 " * 200 + "담자균류")], items=items)[1] == []
+
+
+def test_occurrences_are_checked_where_they_are():
+    """확인은 문서 안 출현마다 한다 (리뷰에서 나온 놓침·오탐 사례)."""
+    # 줄기가 WINDOW보다 길어도 줄기 끝 바로 뒤를 본다
+    long_q = " ".join(f"단어{k}번" for k in range(260))
+
+    def long_items():
+        yield mc("haerae/RC/0", long_q, "정답보기", ["정답보기", "오답하나", "오답둘", "오답셋"], "haerae")
+
+    assert run([("web", 0, f"{long_q} 1 정답보기 2 오답하나")], items=long_items)[1] == ["haerae/RC/0"]
+
+    # 같은 줄기가 먼저 다른 보기로 나오고, 진짜 문항은 한참 뒤에 나와도 잡는다
+    def bio():
+        yield mc("kmmlu/Biology/0", KMMLU_Q, *BIO)
+
+    filler = " ".join(f"잡문{k}" for k in range(250))
+    doc = f"{KMMLU_Q} ① 접합균류 ② 난균류 {filler} {KMMLU_Q} ① 자낭균류 ② 담자균류 ③ 조균류"
+    assert run([("web", 0, doc)], items=bio)[1] == ["kmmlu/Biology/0"]
+
+    # 여러 문항이 공유하는 상투구가 앞에서 수없이 반복돼도 뒤의 진짜 문항을 잡는다
+    bp = "임대차에 관한 설명으로 옳은 것은 다툼이 있으면 판례에 따름"
+    q2 = f"갑은 을 소유의 건물을 보증금 1억원에 임차하여 인도받고 전입신고를 마쳤다 {bp}"
+
+    def law():
+        yield mc("kmmlu/Law/0", q2, "확정일자를 받은 경우 우선변제권이 있다",
+                 ["확정일자를 받은 경우 우선변제권이 있다", "대항력이 없다", "차임 증액은 언제나 가능하다"])
+        yield mc("kmmlu/Law/1", f"다른 내용의 임대차 사례 문제 줄기 여기에 {bp}", "가나다라",
+                 ["가나다라", "마바사", "아자차"])
+
+    others = " ".join(f"{k}번 문제 사례 {k} {bp} ① 보기{k}가 ② 보기{k}나" for k in range(300))
+    res, ids = run([("web", 0, f"{others} {q2} ① 확정일자를 받은 경우 우선변제권이 있다")], items=law)
+    assert ids == ["kmmlu/Law/0"]  # 상투구만 공유한 Law/1은 질문 겹침도 오염도 아니다
+
+    # 겹침을 만든 문서와 정답이 나온 자리가 달라선 안 된다: A는 줄기 전체(다른 보기),
+    # B는 키 하나 + 정답 → 오염 아님 (예전엔 B의 정답으로 오염 판정)
+    q3 = "다음 중 조선 후기 실학자 정약용이 저술한 책으로 지방 관리의 도리를 다룬 것은 무엇인가"
+
+    def hist():
+        yield mc("kmmlu/Korean-History/0", q3, "목민심서", ["목민심서", "열하일기", "북학의", "반계수록"])
+
+    doc_a = ("webA", 0, f"{q3} ① 경세유표 ② 흠흠신서 ③ 여유당전서 ④ 아방강역고")
+    doc_b = ("wiki", 7, "정약용은 " + " ".join(words(q3)[2:10]) + " 이야기와 관련하여 목민심서를 남겼다")
+    res, ids = run([doc_a, doc_b], items=hist)
+    assert ids == [] and res["kmmlu"]["flagged"] == 1
+
+
+def test_option_boundaries():
+    q4 = "어떤 회사의 당기 매출액과 매출원가가 다음과 같을 때 매출총이익은 얼마인가 단위는 만원이다"
+
+    def acc():
+        yield mc("kmmlu/Accounting/0", q4, "120", ["100", "120", "140", "160"])
+
+    assert run([("web", 0, f"{q4} ① 1200 ② 1400 ③ 1600 ④ 1800")], items=acc)[1] == []  # 120 ≠ 1200
+    assert run([("web", 0, f"{q4} ① 100 ② 120 ③ 140 ④ 160")], items=acc)[1] == ["kmmlu/Accounting/0"]
+    # ㄱ·ㄴ 조합 보기는 확인에 못 쓴다 → 질문이 그대로 있어도 '확인 불가'로 따로 센다
+    assert choice_check("옳은 것을 모두 고른 것은", "ㄱ, ㄷ", ["ㄱ, ㄴ", "ㄱ, ㄷ", "ㄴ, ㄷ"]) == (None, ())
+
+    def jamo():
+        yield mc("kmmlu/Law/3", KMMLU_Q, "ㄱ, ㄷ", ["ㄱ, ㄴ", "ㄱ, ㄷ", "ㄴ, ㄷ", "ㄱ, ㄴ, ㄷ"])
+
+    res, ids = run([("web", 0, f"{KMMLU_Q} ① ㄱ, ㄴ ② ㄱ, ㄷ ③ ㄴ, ㄷ")], items=jamo)
+    assert ids == [] and res["kmmlu"]["unverifiable"] == 1
+
+
+def test_save_and_load_found_merge(tmp_path):
+    from evals.contamination import index_digest, load_found, save_found
+
+    per_item, index = build_index(evals())
+    digest = index_digest(index, 0.5)
+    parts = [PLANTED[:2], PLANTED[2:]]  # 나눠 훑은 두 결과를 합치면 한 번에 훑은 것과 같다
+    for k, rows in enumerate(parts):
+        save_found(tmp_path / f"{k}.json", digest, *scan(iter(rows), index, workers=1))
+    found, verified, counts = {}, {}, {}
+    load_found([tmp_path / "0.json", tmp_path / "1.json"], digest, found, verified, counts)
+    assert counts == {"sft": 2, "textbook": 2}
+    assert report(per_item, index, found, verified)[1] == run(PLANTED)[1]
+    with pytest.raises(SystemExit):  # 다른 설정으로 만든 결과는 섞지 않는다
+        load_found([tmp_path / "0.json"], index_digest(index, 0.6), {}, {}, {})

@@ -22,11 +22,13 @@ train 전체, 사전학습 75% · annealing 23%). 영어 FineWeb-Edu만 대상�
 
 선다형(KMMLU · HAE-RAE · HellaSwag)은 질문 겹침만으로 오염이라 하지 않는다. 시험 문제 줄기는
 상투적이라("…에 관한 설명으로 옳지 않은 것은? (다툼이 있으면 판례에 따름)") 같은 줄기가 다른
-시험에 보기만 바뀌어 나오는 일이 흔하다. 그래서 **같은 문서에서 겹친 줄기 바로 뒤
-(WINDOW 단어 안)에 정답 보기가 나와야** 오염으로 본다. 정답 표기가 조금 달라도 다른 보기가
-(3개까지) 전부 그 자리에 나오면 같은 문항으로 본다. 한 글자·한 자리 숫자이거나 줄기 안에 이미
-있는 보기는 확인에 쓰지 않는다.
-워커가 문서를 읽는 김에 확인하므로 따로 다시 읽지 않는다.
+시험에 보기만 바뀌어 나오는 일이 흔하다. 그래서 문서 안에서 문항의 키가 이어 걸린 구간을
+'출현' 하나로 묶고, **그 출현 하나만으로 겹침이 기준 이상이고, 바로 뒤(WINDOW 단어 안)에
+정답 보기가 나와야** 오염으로 본다. 정답 표기가 조금 달라도 다른 보기 2개 이상이 (3개까지)
+전부 그 자리에 나오면 같은 문항으로 본다. 두 글자 이상인 단어가 없는 보기(ㄱ·ㄴ, 한 자리
+숫자)와 줄기 안에 이미 있는 보기는 확인에 쓰지 않고, 그래서 확인할 수 없는 문항은
+'unverifiable'로 따로 센다. 보기는 단어 경계에서 맞추되, 한글로 끝나면 조사·어미가 붙어도
+된다("담자균류입니다"). 워커가 문서를 읽는 김에 확인하므로 따로 다시 읽지 않는다.
 
 8-gram을 쓰는 이유: "다음 중 옳지 않은 것은?" 같은 시험 상투구는 4~5어절이라 걸리지
 않고, 문항 고유의 문장이 그대로 들어 있을 때만 걸린다.
@@ -40,7 +42,9 @@ BoolQ 지문은 위키백과 문단이라 따로 'boolq_passage'로 잰다. 지�
       --out logs/contamination.json --out-ids evals/contaminated_ids.json   # 4코어 약 3.5시간
   python -m evals.contamination --train web:0-1 ...         # 웹 파일 일부만 (정렬 순서 0~24)
   python -m evals.contamination --train-jsonl my_sft.jsonl   # 직접 만든 데이터
-  # 나눠서 훑고 합치기: 출처마다 --save-found, 마지막에 --train 없이 --load-found a.json b.json
+  # 나눠서 훑고 합치기: 출처마다 --save-found, 마지막에 --load-found a.json b.json
+  # (--load-found만 주면 새로 훑지 않는다). 근거 출처#행은 키마다 '처음 본' 것 하나라 워커 순서에
+  # 따라 달라질 수 있다 (집계는 같다)
 
 결과: 평가 세트별 (문항 수, 검사 가능, 질문 겹침, 오염, 하나라도 겹침) + 문항과 근거(학습 데이터
 출처#행) + 오염 문항 id 목록. id 목록은 final_eval.py · eval.py --exclude-ids로 넘겨 오염 문항을
@@ -61,6 +65,10 @@ N = 8
 MIN_WORDS = 5
 MIN_CONTENT = 4  # 키 하나에 필요한 '내용 단어'(두 글자 이상, 숫자만이 아님) 수
 WINDOW = 200  # 겹친 줄기 뒤에서 정답 보기를 찾는 범위 (단어)
+RUN_GAP = N  # 키 위치가 이만큼(단어) 안에서 이어지면 같은 출현으로 묶는다
+MAX_HITS = 2000  # 문서 하나에서 문항 하나당 기록하는 키 위치 상한 (기출 모음 페이지 대비)
+# 보기 뒤에 붙어도 되는 조사·어미의 첫 글자 ("담자균류입니다", "청문을")
+_JOSA = set("이가은는을를의에와과로으도만라란께까보처나랑요다임인입일며고")
 _WORD = re.compile(r"[^\W_]+")  # 모든 문자 체계의 문자·숫자 (밑줄 제외)
 EXPOSURE_ONLY = {"boolq_passage"}  # 노출만 보고하고 오염 id에는 넣지 않는 평가 세트
 
@@ -100,19 +108,31 @@ def form_keys(form) -> list[str]:
 
 def choice_check(stem: str, answer: str, options) -> tuple:
     """선다형 확인용 (정답, 다른 보기들) — 정규화한 문자열. 쓸 수 없는 보기는 뺀다:
-    두 글자 미만(한 글자·한 자리 숫자)이거나 줄기 안에 이미 있는 말 (줄기가 겹치면 저절로 나온다).
-
-    보기는 단어 앞 경계만 맞춘다(" 담자균류"가 " 담자균류입니다"에도 걸린다) — 한국어는 조사·어미가
-    붙어 나오기 때문이다."""
+    두 글자 이상인 단어가 없거나(ㄱ·ㄴ, 한 자리 숫자, 1.5) 줄기 안에 이미 있는 말
+    (줄기가 겹치면 저절로 나온다)."""
     s = f" {' '.join(words(stem))} "
 
     def usable(t):
-        t = " ".join(words(t))
-        return t if len(t.replace(" ", "")) >= 2 and f" {t}" not in s else None
+        ws = words(t)
+        t = " ".join(ws)
+        return t if any(len(w) >= 2 for w in ws) and f" {t}" not in s else None
 
     ans = usable(answer)
     others = tuple(dict.fromkeys(o for o in map(usable, options) if o and o != ans))
     return ans, others
+
+
+def follows(option: str, win: str) -> bool:
+    """win(앞뒤에 공백을 붙인 단어열)에 보기가 단어 경계에서 나오는가. 끝은 공백이어야 하고,
+    보기가 한글로 끝나면 조사·어미가 붙어도 된다 — "120"은 "1200"에, "자낭균"은 "자낭균류"에
+    걸리지 않지만 "담자균류"는 "담자균류입니다"에 걸린다."""
+    k = win.find(f" {option}")
+    while k >= 0:
+        nxt = win[k + 1 + len(option)]  # win이 공백으로 끝나므로 항상 있다
+        if nxt == " " or ("가" <= option[-1] <= "힣" and nxt in _JOSA):
+            return True
+        k = win.find(f" {option}", k + 1)
+    return False
 
 
 # ---------------- 평가 세트: (평가 세트, id, 표기 목록[, (정답, 보기들)]) ----------------
@@ -238,7 +258,7 @@ def build_index(eval_items):
     문항별 정보: (평가 세트, id) → (표시 텍스트, 표기별 키 목록, 선다형 번호 또는 None).
     BoolQ 질문과 지문은 같은 id를 쓰므로 평가 세트까지 묶어 구분한다.
     색인: {"keys": 길이별 키 집합, "key_items": 키 → 그 키를 가진 선다형 문항 번호들,
-           "choices": 선다형 번호 → (정답, 다른 보기들)}
+           "choices": 선다형 번호 → (정답, 다른 보기들, 키 수)}
     """
     per_item, keys, key_items, choices = {}, {}, {}, []
     for item in eval_items:
@@ -248,9 +268,9 @@ def build_index(eval_items):
         fk = [form_keys(f) for f in forms]
         text = " / ".join(forms[0])
         cidx = None
-        if len(item) > 3 and item[3] is not None:
+        if len(item) > 3 and item[3] is not None:  # 선다형은 표기가 하나다
             cidx = len(choices)
-            choices.append(choice_check(text, *item[3]))
+            choices.append((*choice_check(text, *item[3]), len(fk[0])))
             for g in dict.fromkeys(g for ks in fk for g in ks):
                 key_items.setdefault(g, []).append(cidx)
         per_item[(bench, item_id)] = (text, fk, cidx)
@@ -260,9 +280,9 @@ def build_index(eval_items):
                       "choices": choices}
 
 
-def index_digest(index) -> str:
-    """색인 지문 — 저장해 둔 대조 결과(--save-found)가 같은 색인으로 만든 것인지 확인한다."""
-    h = hashlib.sha256(f"{N} {WINDOW}\n".encode())
+def index_digest(index, threshold) -> str:
+    """색인 지문 — 저장해 둔 대조 결과(--save-found)가 같은 색인·설정으로 만든 것인지 확인한다."""
+    h = hashlib.sha256(f"{N} {WINDOW} {RUN_GAP} {MAX_HITS} {threshold}\n".encode())
     for g in sorted(g for ks in index["keys"].values() for g in ks):
         h.update(g.encode() + b"\n")
     h.update(json.dumps(index["choices"], ensure_ascii=False).encode())
@@ -271,7 +291,7 @@ def index_digest(index) -> str:
 
 # ---------------- 대조 ----------------
 
-_IDX = None  # 워커 안의 색인 (길이별 키 집합, key_items, choices). Pool initializer로 받는다
+_IDX = None  # 워커 안의 색인 (길이별 키 집합, key_items, choices, 기준). Pool initializer로 받는다
 
 
 def _init(idx):
@@ -282,20 +302,33 @@ def _init(idx):
 
 
 def _better(a, b):
-    """선다형 확인 결과 (출처, 행, 정답이 이어 나옴, 이어 나온 다른 보기 수) 중 나은 것."""
-    return b if a is None or (b[2], b[3]) > (a[2], a[3]) else a
+    """선다형 확인 결과 (출처, 행, 정답이 이어 나옴, 이어 나온 다른 보기 수, 출현 겹침) 중 나은 것."""
+    return b if a is None or b[2:] > a[2:] else a
+
+
+def runs(hits):
+    """한 문서 안 키 위치들 [(시작, 끝, 키)] → 이어 걸린 구간(출현)들 [[키 집합, 구간 끝]]."""
+    out = []
+    for j, e, g in sorted(hits):
+        if out and j <= out[-1][1] + RUN_GAP:
+            out[-1][0].add(g)
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([{g}, e])
+    return out
 
 
 def _scan(batch):
     """워커: 문서들에서 색인에 있는 키를 찾는다.
 
-    found: 키 → 처음 본 (출처, 행). verified: 선다형 번호 → 가장 나은 확인 결과 —
-    그 문항의 키가 걸린 자리 뒤 WINDOW 단어 안에 정답·다른 보기가 있는가."""
-    keys_by_n, key_items, choices = _IDX
+    found: 키 → 처음 본 (출처, 행). verified: 선다형 번호 → 가장 나은 확인 결과. 확인은
+    출현(이어 걸린 구간)마다 한다 — 그 출현 하나의 겹침이 기준 이상일 때만, 구간 바로 뒤
+    WINDOW 단어 안에 정답·다른 보기가 있는지 본다."""
+    keys_by_n, key_items, choices, threshold = _IDX
     found, verified = {}, {}
     for src, i, text in batch:
         ws = words(text)
-        ends = {}
+        hits = {}
         for n, keys in keys_by_n.items():
             for j in range(len(ws) - n + 1):
                 g = " ".join(ws[j:j + n])
@@ -303,14 +336,17 @@ def _scan(batch):
                     if g not in found:
                         found[g] = (src, i)
                     for cidx in key_items.get(g, ()):
-                        e = ends.setdefault(cidx, [])
-                        if len(e) < 8:
-                            e.append(j + n)
-        for cidx, es in ends.items():
-            ans, others = choices[cidx]
-            for e in es:
-                win = f" {' '.join(ws[e:e + WINDOW])} "
-                r = (src, i, bool(ans) and f" {ans}" in win, sum(f" {o}" in win for o in others))
+                        h = hits.setdefault(cidx, [])
+                        if len(h) < MAX_HITS:
+                            h.append((j, j + n, g))
+        for cidx, h in hits.items():
+            ans, others, nkeys = choices[cidx]
+            for ks, end in runs(h):
+                if len(ks) / nkeys < threshold:  # 상투구 하나 · 다른 문항의 일부만 걸린 자리
+                    continue
+                win = f" {' '.join(ws[end:end + WINDOW])} "
+                r = (src, i, bool(ans) and follows(ans, win), sum(follows(o, win) for o in others),
+                     round(len(ks) / nkeys, 3))
                 verified[cidx] = _better(verified.get(cidx), r)
     return found, verified
 
@@ -326,11 +362,11 @@ def _batches(it, size=256):
         yield buf
 
 
-def scan(train_iter, index, workers=4, progress_every=200_000, start_method=None):
-    """학습 데이터를 훑는다 → (found, verified, 출처별 행 수).
+def scan(train_iter, index, workers=4, threshold=0.5, progress_every=200_000, start_method=None):
+    """학습 데이터를 훑는다 → (found, verified, 출처별 행 수). threshold는 report와 같은 값을 쓴다.
     start_method: None이면 플랫폼 기본 (fork · spawn · forkserver 모두 같은 결과)."""
     idx = ({n: frozenset(k) for n, k in sorted(index["keys"].items(), reverse=True)},
-           index["key_items"], index["choices"])
+           index["key_items"], index["choices"], threshold)
     found, verified, rows, counts, t0 = {}, {}, 0, {}, time.time()
 
     def counted():
@@ -366,14 +402,15 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
     """평가 세트별 집계와 오염 문항 id 목록.
 
     세트마다 items · checkable · any_match · flagged(질문 겹침 ≥ threshold) ·
-    contaminated(오염 — 선다형은 정답까지 이어 나온 것), examples(오염 문항 앞 몇 개),
+    contaminated(오염 — 선다형은 정답까지 이어 나온 것) · unverifiable(질문은 겹쳤지만 쓸 수 있는
+    보기가 없어 확인할 수 없는 선다형), examples(오염 문항 앞 몇 개),
     question_only(질문만 겹치고 정답은 안 이어진 선다형 문항), partial(일부만 겹친 문항),
     sources(겹친 문항 수, 근거 출처별). 목록은 겹침 큰 순서로 limit개.
     """
     out, ids = {}, []
     for (bench, item_id), (text, fk, cidx) in per_item.items():
         r = out.setdefault(bench, {"items": 0, "checkable": 0, "any_match": 0, "flagged": 0,
-                                   "contaminated": 0, "examples": [], "question_only": [],
+                                   "contaminated": 0, "unverifiable": 0, "examples": [], "question_only": [],
                                    "partial": [], "sources": {}})
         r["items"] += 1
         fk = [ks for ks in fk if ks]
@@ -396,12 +433,16 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
         r["flagged"] += 1
         ok = True
         if cidx is not None:
-            ans, others = index["choices"][cidx]
+            ans, others, _ = index["choices"][cidx]
+            if not ans and len(others) < 2:
+                r["unverifiable"] += 1
+                entry["unverifiable"] = True
             v = verified.get(cidx)
-            # 정답이 이어 나오거나, 다른 보기가 (3개까지) 전부 이어 나오면 같은 문항이다
+            # 정답이 이어 나오거나, 다른 보기 2개 이상이 (3개까지) 전부 이어 나오면 같은 문항이다
             ok = v is not None and (v[2] or len(others) >= 2 and v[3] >= min(3, len(others)))
             if v is not None:
-                entry.update(evidence=f"{v[0]}#{v[1]}", answer_follows=v[2], options_follow=v[3])
+                entry.update(evidence=f"{v[0]}#{v[1]}", answer_follows=v[2], options_follow=v[3],
+                             occurrence_overlap=v[4])
         if not ok:
             r["question_only"].append(entry)
             continue
@@ -417,13 +458,36 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
     return out, sorted(ids)
 
 
+def save_found(path, digest, found, verified, counts):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"index": digest, "train_rows": counts, "found": found, "verified": verified},
+                  f, ensure_ascii=False)
+
+
+def load_found(paths, digest, found, verified, counts):
+    """저장해 둔 대조 결과들을 found · verified · counts에 합친다 (같은 색인·설정이어야 한다)."""
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+        if saved["index"] != digest:
+            sys.exit(f"{path}: 다른 색인으로 만든 결과입니다 ({saved['index']} ≠ {digest}) — 같은 "
+                     "--evals · --threshold, 같은 버전의 이 도구로 다시 훑으세요")
+        for src, n in saved["train_rows"].items():
+            counts[src] = counts.get(src, 0) + n
+        for g, ev in saved["found"].items():
+            found.setdefault(g, tuple(ev))
+        for c, v in saved["verified"].items():  # JSON이라 키는 문자열, 값은 목록으로 돌아온다
+            verified[int(c)] = _better(verified.get(int(c)), tuple(v))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--evals", nargs="+",
                     default=["kmmlu", "haerae", "copa", "boolq", "hellaswag", "heldout", "math"])
-    ap.add_argument("--train", nargs="*", default=["koalpaca", "kullm"],
+    ap.add_argument("--train", nargs="*", default=None,
                     help="koalpaca · kullm · textbooks(교과서 17개 구성) · wiki(1.4GB) · namuwiki(9.7GB) "
-                         "· web(사전학습 웹 106GB) · web:A-B(웹 A~B번 파일)")
+                         "· web(사전학습 웹 106GB) · web:A-B(웹 A~B번 파일). 기본 koalpaca kullm, "
+                         "--load-found만 주면 새로 훑지 않는다")
     ap.add_argument("--train-jsonl", nargs="*", default=[])
     ap.add_argument("--threshold", type=float, default=0.5)
     ap.add_argument("--limit", type=int, default=None, help="출처별 행 수 제한 (빠른 확인용)")
@@ -433,10 +497,12 @@ def main():
     ap.add_argument("--out", default=None, help="결과 JSON 경로")
     ap.add_argument("--out-ids", default=None, help="오염 문항 id 목록 JSON (--exclude-ids로 넘긴다)")
     args = ap.parse_args()
+    if args.train is None:
+        args.train = [] if args.load_found else ["koalpaca", "kullm"]
 
     t0 = time.time()
     per_item, index = build_index(iter_evals(args.evals))
-    digest = index_digest(index)
+    digest = index_digest(index, args.threshold)
     keys = index["keys"]
     print(f"평가 문항 {len(per_item):,}개 (선다형 {len(index['choices']):,}), "
           f"키 {sum(len(k) for k in keys.values()):,}개 색인 "
@@ -445,23 +511,10 @@ def main():
     found, verified, counts = {}, {}, {}
     if args.train or args.train_jsonl:
         found, verified, counts = scan(iter_train(args.train, args.train_jsonl, args.limit), index,
-                                       args.workers)
+                                       args.workers, args.threshold)
     if args.save_found:
-        with open(args.save_found, "w", encoding="utf-8") as f:
-            json.dump({"index": digest, "train_rows": counts, "found": found,
-                       "verified": verified}, f, ensure_ascii=False)
-    for path in args.load_found:
-        with open(path, encoding="utf-8") as f:
-            saved = json.load(f)
-        if saved["index"] != digest:
-            sys.exit(f"{path}: 다른 색인으로 만든 결과입니다 ({saved['index']} ≠ {digest}) — 같은 "
-                     "--evals, 같은 버전의 이 도구로 다시 훑으세요")
-        for src, n in saved["train_rows"].items():
-            counts[src] = counts.get(src, 0) + n
-        for g, ev in saved["found"].items():
-            found.setdefault(g, tuple(ev))
-        for c, v in saved["verified"].items():
-            verified[int(c)] = _better(verified.get(int(c)), tuple(v))
+        save_found(args.save_found, digest, found, verified, counts)
+    load_found(args.load_found, digest, found, verified, counts)
     res, ids = report(per_item, index, found, verified, args.threshold)
     print(f"학습 데이터 {sum(counts.values()):,}행 ({time.time() - t0:.0f}s)")
     for src, n in counts.items():
@@ -470,12 +523,13 @@ def main():
           f"   (겹침 기준 {args.threshold})")
     for bench, r in res.items():
         print(f"{bench:<14} {r['items']:>7,} {r['checkable']:>9,} {r['flagged']:>9,} {r['contaminated']:>7,} "
-              f"{r['any_match']:>12,}" + ("  (노출만 — 오염 id에 넣지 않음)" if bench in EXPOSURE_ONLY else ""))
+              f"{r['any_match']:>12,}" + ("  (노출만 — 오염 id에 넣지 않음)" if bench in EXPOSURE_ONLY else "")
+              + (f"  (확인 불가 {r['unverifiable']})" if r["unverifiable"] else ""))
         for ex in r["examples"][:3]:
             print(f"    - {ex['id']} 겹침 {ex['overlap']:.0%} ← {ex['evidence']}: {ex['text'][:70]}")
         if r["sources"]:
             print(f"    근거 출처: {r['sources']}")
-    summary = {"n": N, "window": WINDOW, "threshold": args.threshold, "index": digest,
+    summary = {"n": N, "window": WINDOW, "run_gap": RUN_GAP, "threshold": args.threshold, "index": digest,
                "train_rows": counts, "evals": res, "contaminated_total": len(ids),
                "seconds": round(time.time() - t0)}
     if args.out:
