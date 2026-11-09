@@ -134,6 +134,7 @@ def test_exclude_ids_skip_contaminated_items(monkeypatch, tiny_tok):
     k = ev.kmmlu_details(model, tiny_tok, 5, "cpu", exclude={"kmmlu/Biology/0", "kmmlu/Biology/6",
                                                              "kmmlu/Law/1", "haerae/History/0"})
     assert k["n"] == 5 and k["excluded"] == 2
+    assert k["by_config"]["Biology"]["excluded"] == 2  # 과목별로도 몇 개 뺐는지 남긴다
     # shots=3 → 행 0~2는 예시. 행 3(채점 첫 문항)과 행 7은 빼고, 예시 행 1은 영향 없음
     h = ev.haerae_details(model, tiny_tok, 3, "cpu", exclude={"haerae/History/3", "haerae/History/7",
                                                               "haerae/History/1"})

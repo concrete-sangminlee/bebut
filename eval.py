@@ -296,7 +296,8 @@ def _aggregate(per):
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
-    out["by_config"] = {c: {k: r[k] for k in ("n", *names, "truncated")} for c, r in per.items()}
+    out["by_config"] = {c: {**{k: r[k] for k in ("n", *names, "truncated")},
+                           "excluded": r.get("excluded", 0)} for c, r in per.items()}
     # 지표별 예측 분포 합계 — mc 형식에서 "늘 A" 같은 문자 쏠림을 잡으려면 꼭 있어야 한다
     out["preds"] = {k: {} for k in names}
     for r in per.values():
@@ -437,6 +438,8 @@ def main():
                     help="kmmlu·haerae 채점 형식 (mc = 리더보드와 같은 보기·문자 형식)")
     ap.add_argument("--shots", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--exclude-ids", default=None,
+                    help="오염 문항 id 목록 JSON (evals/contamination.py --out-ids) — 빼고 채점")
     args = ap.parse_args()
     if args.kobest and args.bench and args.kobest != args.bench:
         ap.error("--kobest와 --bench는 하나만 (--bench가 KOBEST 과제도 받는다)")
@@ -444,6 +447,7 @@ def main():
     device = pick_device()
     device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"
     model, tok = load_model(args.ckpt, args.tokenizer, device, torch.float32)  # 채점은 fp32로
+    exclude = load_exclude(args.exclude_ids)
 
     if args.ppl:
         loader = ShardedDataLoader(args.shard_dir, "val", 8, model.cfg.max_seq_len,
@@ -455,17 +459,19 @@ def main():
               "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 
     if args.bench in ("kmmlu", "haerae"):
-        r = benchmark_details(model, tok, args.bench, args.shots, device, args.limit, args.format)
-        print(f"{args.bench} ({args.format}, {args.shots}-shot, n={r['n']}, 잘린 문맥 {r['truncated']}): "
+        r = benchmark_details(model, tok, args.bench, args.shots, device, args.limit, args.format,
+                              exclude)
+        print(f"{args.bench} ({args.format}, {args.shots}-shot, n={r['n']}, 잘린 문맥 {r['truncated']}, "
+              f"오염 제외 {r['excluded']}): "
               f"calib {r['acc_calib']*100:.1f}% | raw {r['acc']*100:.1f}% | len {r['acc_len']*100:.1f}% "
               f"(과목 평균 calib {r['macro_acc_calib']*100:.1f}%)")
         for c, v in r["by_config"].items():
             print(f"  {c:<40} n={v['n']:<5} calib {v['acc_calib']*100:5.1f}%")
     args.kobest = args.kobest or (args.bench if args.bench in FORMATTERS else None)
     if args.kobest:
-        r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit)
+        r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit, exclude)
         chance = {"copa": 0.5, "boolq": 0.5, "hellaswag": 0.25}[args.kobest]
-        print(f"KOBEST {args.kobest} ({args.shots}-shot, n={r['n']}, "
+        print(f"KOBEST {args.kobest} ({args.shots}-shot, n={r['n']}, 오염 제외 {r['excluded']}, "
               f"무작위 기준 {chance*100:.0f}%)")
         # 한쪽으로 쏠려 있으면 정확도가 라벨 분포를 반영할 뿐 성능이 아니다
         for name in ("acc_calib", "acc", "acc_len"):
