@@ -195,7 +195,9 @@ FORMATTERS = {"copa": format_copa, "boolq": format_boolq, "hellaswag": format_he
 def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip=None):
     """다지선다 채점. 세 가지 점수를 한 번에 낸다.
 
-    skip: 채점에서 뺄 test 행 번호 집합 (오염 문항 제외 — evals/contamination.py).
+    skip: 본 점수에서 뺄 test 행 번호 집합 (오염 문항 — evals/contamination.py). 뺀 문항도
+          따로 채점해 excluded_acc로 돌려준다 — 체크포인트로 excluded_acc와 본 점수를 비교하면
+          학습 중에 본 문항을 기억해서 얻은 이득(기억 효과)이 나온다.
 
     acc        log P(choice | context) 합이 가장 큰 선택지 (원시 점수)
     acc_len    위 값을 선택지 바이트 수로 나눈 것 (lm-eval-harness의 acc_norm)
@@ -214,10 +216,9 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
     correct = dict.fromkeys(names, 0)
     preds = {n: {} for n in names}
     total = excluded = 0
+    ex_correct = dict.fromkeys(names, 0)
     for i, row in enumerate(test_rows):
-        if skip and i in skip:
-            excluded += 1
-            continue
+        held_out = bool(skip) and i in skip
         ctx, choices, label = fmt(row)
         cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
@@ -232,12 +233,17 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
         }
         for n in names:
             p = max(range(len(choices)), key=scores[n].__getitem__)
+            if held_out:
+                ex_correct[n] += int(p == label)
+                continue
             preds[n][p] = preds[n].get(p, 0) + 1
             correct[n] += int(p == label)
-        total += 1
+        excluded += held_out
+        total += not held_out
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
-            "truncated": stats["truncated"], "excluded": excluded}
+            "truncated": stats["truncated"], "excluded": excluded,
+            "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
 
 
 # ---------------- KMMLU · HAE-RAE ----------------
@@ -291,8 +297,10 @@ def _aggregate(per):
     """설정(과목·범주)별 결과 → micro(문항 가중)·macro(설정 평균) 합계."""
     names = ("acc", "acc_len", "acc_calib")
     n = sum(r["n"] for r in per.values())
-    out = {"n": n, "truncated": sum(r["truncated"] for r in per.values()),
-           "excluded": sum(r.get("excluded", 0) for r in per.values())}
+    ex = sum(r.get("excluded", 0) for r in per.values())
+    out = {"n": n, "truncated": sum(r["truncated"] for r in per.values()), "excluded": ex,
+           "excluded_acc": {k: sum(r["excluded_acc"][k] * r["excluded"] for r in per.values()
+                                   if r.get("excluded")) / ex for k in names} if ex else None}
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
@@ -392,7 +400,8 @@ def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloz
         if r["truncated"]:
             line += f" | 문맥 잘림 {r['truncated']}"
         if r.get("excluded"):
-            line += f" | 오염 제외 {r['excluded']}"
+            line += (f" | 오염 제외 {r['excluded']} (그 문항만 calib "
+                     f"{r['excluded_acc']['acc_calib']*100:.1f}%)")
         print(line, flush=True)
     return kob, other
 

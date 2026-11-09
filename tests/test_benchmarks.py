@@ -135,6 +135,8 @@ def test_exclude_ids_skip_contaminated_items(monkeypatch, tiny_tok):
                                                              "kmmlu/Law/1", "haerae/History/0"})
     assert k["n"] == 5 and k["excluded"] == 2
     assert k["by_config"]["Biology"]["excluded"] == 2  # 과목별로도 몇 개 뺐는지 남긴다
+    # 뺀 문항도 따로 채점한다 — 같은 행 7개라 뺀 2개와 나머지 5개의 정확도가 같아야 한다
+    assert k["excluded_acc"]["acc"] == k["acc"] and k["excluded_acc"]["acc_calib"] == k["acc_calib"]
     # shots=3 → 행 0~2는 예시. 행 3(채점 첫 문항)과 행 7은 빼고, 예시 행 1은 영향 없음
     h = ev.haerae_details(model, tiny_tok, 3, "cpu", exclude={"haerae/History/3", "haerae/History/7",
                                                               "haerae/History/1"})
