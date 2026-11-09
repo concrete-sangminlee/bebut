@@ -17,6 +17,7 @@ KOBEST(BoolQ·COPA·HellaSwag): 베이스 모델은 지시를 못 따르므로 l
 """
 
 import argparse
+import json
 import math
 
 import torch
@@ -191,8 +192,12 @@ def format_hellaswag(row):
 FORMATTERS = {"copa": format_copa, "boolq": format_boolq, "hellaswag": format_hellaswag}
 
 
-def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
+def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip=None):
     """다지선다 채점. 세 가지 점수를 한 번에 낸다.
+
+    skip: 본 점수에서 뺄 test 행 번호 집합 (오염 문항 — evals/contamination.py). 뺀 문항도
+          따로 채점해 excluded_acc로 돌려준다 — 체크포인트로 excluded_acc와 본 점수를 비교하면
+          학습 중에 본 문항을 기억해서 얻은 이득(기억 효과)이 나온다.
 
     acc        log P(choice | context) 합이 가장 큰 선택지 (원시 점수)
     acc_len    위 값을 선택지 바이트 수로 나눈 것 (lm-eval-harness의 acc_norm)
@@ -210,8 +215,10 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
     names = ("acc", "acc_len", "acc_calib")
     correct = dict.fromkeys(names, 0)
     preds = {n: {} for n in names}
-    total = 0
-    for row in test_rows:
+    total = excluded = 0
+    ex_correct = dict.fromkeys(names, 0)
+    for i, row in enumerate(test_rows):
+        held_out = bool(skip) and i in skip
         ctx, choices, label = fmt(row)
         cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
@@ -226,12 +233,17 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device):
         }
         for n in names:
             p = max(range(len(choices)), key=scores[n].__getitem__)
+            if held_out:
+                ex_correct[n] += int(p == label)
+                continue
             preds[n][p] = preds[n].get(p, 0) + 1
             correct[n] += int(p == label)
-        total += 1
+        excluded += held_out
+        total += not held_out
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
-            "truncated": stats["truncated"]}
+            "truncated": stats["truncated"], "excluded": excluded,
+            "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
 
 
 # ---------------- KMMLU · HAE-RAE ----------------
@@ -285,11 +297,15 @@ def _aggregate(per):
     """설정(과목·범주)별 결과 → micro(문항 가중)·macro(설정 평균) 합계."""
     names = ("acc", "acc_len", "acc_calib")
     n = sum(r["n"] for r in per.values())
-    out = {"n": n, "truncated": sum(r["truncated"] for r in per.values())}
+    ex = sum(r.get("excluded", 0) for r in per.values())
+    out = {"n": n, "truncated": sum(r["truncated"] for r in per.values()), "excluded": ex,
+           "excluded_acc": {k: sum(r["excluded_acc"][k] * r["excluded"] for r in per.values()
+                                   if r.get("excluded")) / ex for k in names} if ex else None}
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
-    out["by_config"] = {c: {k: r[k] for k in ("n", *names, "truncated")} for c, r in per.items()}
+    out["by_config"] = {c: {**{k: r[k] for k in ("n", *names, "truncated")},
+                           "excluded": r.get("excluded", 0)} for c, r in per.items()}
     # 지표별 예측 분포 합계 — mc 형식에서 "늘 A" 같은 문자 쏠림을 잡으려면 꼭 있어야 한다
     out["preds"] = {k: {} for k in names}
     for r in per.values():
@@ -300,7 +316,20 @@ def _aggregate(per):
     return out
 
 
-def kmmlu_details(model, tok, shots, device, limit=None, fmt="cloze", subjects=None):
+def _skip(exclude, prefix, offset=0):
+    """'kmmlu/Biology/12' 같은 id 집합 → 이 설정의 test 행 번호 집합 (offset만큼 당겨서)."""
+    if not exclude:
+        return None
+    out = set()
+    for e in exclude:
+        if e.startswith(prefix):
+            tail = e[len(prefix):]
+            if tail.isdigit() and int(tail) >= offset:
+                out.add(int(tail) - offset)
+    return out
+
+
+def kmmlu_details(model, tok, shots, device, limit=None, fmt="cloze", subjects=None, exclude=None):
     """과목마다 dev 앞쪽 shots개를 few-shot으로, test를 채점한다 (KMMLU 표준 구성)."""
     from datasets import get_dataset_config_names, load_dataset
 
@@ -312,11 +341,12 @@ def kmmlu_details(model, tok, shots, device, limit=None, fmt="cloze", subjects=N
         test = ds["test"] if limit is None else ds["test"].select(range(min(limit, len(ds["test"]))))
         k = min(shots, len(ds["dev"]))  # dev는 과목마다 5문항뿐 — 더 달라고 해도 5-shot이다
         used.append(k)
-        per[sub] = evaluate_choices(model, tok, f, ds["dev"], test, k, device)
+        per[sub] = evaluate_choices(model, tok, f, ds["dev"], test, k, device,
+                                    _skip(exclude, f"kmmlu/{sub}/"))
     return {"format": fmt, "shots": min(used, default=shots), **_aggregate(per)}
 
 
-def haerae_details(model, tok, shots, device, limit=None, fmt="cloze", categories=None):
+def haerae_details(model, tok, shots, device, limit=None, fmt="cloze", categories=None, exclude=None):
     """HAE-RAE Bench는 test만 있다. few-shot 예시는 각 범주 test 앞쪽 shots개를 쓰고
     채점에서는 뺀다 (같은 문항으로 예시와 채점을 겹치지 않게)."""
     from datasets import get_dataset_config_names, load_dataset
@@ -330,23 +360,27 @@ def haerae_details(model, tok, shots, device, limit=None, fmt="cloze", categorie
         rest = rows.select(range(len(shot_rows), len(rows)))
         if limit is not None:
             rest = rest.select(range(min(limit, len(rest))))
-        per[cat] = evaluate_choices(model, tok, f, shot_rows, rest, len(shot_rows), device)
+        # id의 행 번호는 test 전체 기준이라 few-shot으로 뺀 앞부분만큼 당긴다
+        per[cat] = evaluate_choices(model, tok, f, shot_rows, rest, len(shot_rows), device,
+                                    _skip(exclude, f"haerae/{cat}/", len(shot_rows)))
     return {"format": fmt, "shots": shots, **_aggregate(per)}
 
 
 BENCHMARKS = ("copa", "boolq", "hellaswag", "kmmlu", "haerae")
 
 
-def benchmark_details(model, tok, name, shots, device, limit=None, fmt="cloze"):
-    """이름 하나로 어떤 벤치마크든 같은 형태의 결과 dict를 돌려준다."""
+def benchmark_details(model, tok, name, shots, device, limit=None, fmt="cloze", exclude=None):
+    """이름 하나로 어떤 벤치마크든 같은 형태의 결과 dict를 돌려준다.
+    exclude: 채점에서 뺄 문항 id 집합 (evals/contamination.py --out-ids)."""
     if name == "kmmlu":
-        return kmmlu_details(model, tok, shots, device, limit, fmt)
+        return kmmlu_details(model, tok, shots, device, limit, fmt, exclude=exclude)
     if name == "haerae":
-        return haerae_details(model, tok, shots, device, limit, fmt)
-    return kobest_details(model, tok, name, shots, device, limit)
+        return haerae_details(model, tok, shots, device, limit, fmt, exclude=exclude)
+    return kobest_details(model, tok, name, shots, device, limit, exclude)
 
 
-def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloze", limit=None):
+def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloze", limit=None,
+                   exclude=None):
     """여러 벤치마크를 돌려 (kobest 결과, 그 밖의 결과)를 돌려주고 한 줄씩 출력한다.
 
     KOBEST는 예전 평가와 비교할 수 있게 기존 2-shot을 그대로 쓰고, KMMLU·HAE-RAE는
@@ -355,7 +389,7 @@ def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloz
     kob, other = {}, {}
     for name in names:
         r = benchmark_details(model, tok, name, kobest_shots if name in FORMATTERS else shots,
-                              device, limit, fmt)
+                              device, limit, fmt, exclude)
         (kob if name in FORMATTERS else other)[name] = r
         line = (f"  {name:<10} calib {r['acc_calib']*100:5.1f}% | raw {r['acc']*100:5.1f}% "
                 f"| len {r['acc_len']*100:5.1f}% (n={r['n']}")
@@ -365,8 +399,19 @@ def run_benchmarks(model, tok, names, device, kobest_shots=2, shots=5, fmt="cloz
             line += f", {r['format']} {r['shots']}-shot) 과목 평균 calib {r['macro_acc_calib']*100:5.1f}%"
         if r["truncated"]:
             line += f" | 문맥 잘림 {r['truncated']}"
+        if r.get("excluded"):
+            line += (f" | 오염 제외 {r['excluded']} (그 문항만 calib "
+                     f"{r['excluded_acc']['acc_calib']*100:.1f}%)")
         print(line, flush=True)
     return kob, other
+
+
+def load_exclude(path):
+    """evals/contamination.py --out-ids가 쓴 JSON 목록 → 집합 (없으면 None)."""
+    if not path:
+        return None
+    with open(path, encoding="utf-8") as f:
+        return set(json.load(f))
 
 
 def load_kobest(task, limit=None):
@@ -377,9 +422,10 @@ def load_kobest(task, limit=None):
     return ds["train"], test
 
 
-def kobest_details(model, tok, task, shots, device, limit=None) -> dict:
+def kobest_details(model, tok, task, shots, device, limit=None, exclude=None) -> dict:
     train, test = load_kobest(task, limit)
-    return evaluate_choices(model, tok, FORMATTERS[task], train, test, shots, device)
+    return evaluate_choices(model, tok, FORMATTERS[task], train, test, shots, device,
+                            _skip(exclude, f"kobest/{task}/"))
 
 
 def eval_kobest(model, tok, task, shots, device, limit=None):
@@ -401,6 +447,8 @@ def main():
                     help="kmmlu·haerae 채점 형식 (mc = 리더보드와 같은 보기·문자 형식)")
     ap.add_argument("--shots", type=int, default=5)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--exclude-ids", default=None,
+                    help="오염 문항 id 목록 JSON (evals/contamination.py --out-ids) — 빼고 채점")
     args = ap.parse_args()
     if args.kobest and args.bench and args.kobest != args.bench:
         ap.error("--kobest와 --bench는 하나만 (--bench가 KOBEST 과제도 받는다)")
@@ -408,6 +456,7 @@ def main():
     device = pick_device()
     device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"
     model, tok = load_model(args.ckpt, args.tokenizer, device, torch.float32)  # 채점은 fp32로
+    exclude = load_exclude(args.exclude_ids)
 
     if args.ppl:
         loader = ShardedDataLoader(args.shard_dir, "val", 8, model.cfg.max_seq_len,
@@ -419,17 +468,19 @@ def main():
               "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 
     if args.bench in ("kmmlu", "haerae"):
-        r = benchmark_details(model, tok, args.bench, args.shots, device, args.limit, args.format)
-        print(f"{args.bench} ({args.format}, {args.shots}-shot, n={r['n']}, 잘린 문맥 {r['truncated']}): "
+        r = benchmark_details(model, tok, args.bench, args.shots, device, args.limit, args.format,
+                              exclude)
+        print(f"{args.bench} ({args.format}, {args.shots}-shot, n={r['n']}, 잘린 문맥 {r['truncated']}, "
+              f"오염 제외 {r['excluded']}): "
               f"calib {r['acc_calib']*100:.1f}% | raw {r['acc']*100:.1f}% | len {r['acc_len']*100:.1f}% "
               f"(과목 평균 calib {r['macro_acc_calib']*100:.1f}%)")
         for c, v in r["by_config"].items():
             print(f"  {c:<40} n={v['n']:<5} calib {v['acc_calib']*100:5.1f}%")
     args.kobest = args.kobest or (args.bench if args.bench in FORMATTERS else None)
     if args.kobest:
-        r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit)
+        r = kobest_details(model, tok, args.kobest, args.shots, device, args.limit, exclude)
         chance = {"copa": 0.5, "boolq": 0.5, "hellaswag": 0.25}[args.kobest]
-        print(f"KOBEST {args.kobest} ({args.shots}-shot, n={r['n']}, "
+        print(f"KOBEST {args.kobest} ({args.shots}-shot, n={r['n']}, 오염 제외 {r['excluded']}, "
               f"무작위 기준 {chance*100:.0f}%)")
         # 한쪽으로 쏠려 있으면 정확도가 라벨 분포를 반영할 뿐 성능이 아니다
         for name in ("acc_calib", "acc", "acc_len"):

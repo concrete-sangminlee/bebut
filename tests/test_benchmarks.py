@@ -119,3 +119,27 @@ def test_real_datasets_smoke(real_tok):
     assert len(r["by_config"]) == 6
     for task in ("copa", "boolq", "hellaswag"):
         assert ev.kobest_details(model, real_tok, task, 2, "cpu", limit=2)["n"] == 2
+
+
+def test_exclude_ids_skip_contaminated_items(monkeypatch, tiny_tok):
+    """오염 문항 id를 주면 그 문항만 빼고 채점한다. HAE-RAE는 few-shot으로 쓴 앞부분만큼
+    행 번호를 당겨야 한다 (id는 test 전체 기준)."""
+    rows = FakeDataset([KMMLU_ROW] * 7)
+    hrows = FakeDataset([HAERAE_5] * 8)
+    install_fake_datasets(monkeypatch, {
+        "HAERAE-HUB/KMMLU": {"Biology": {"dev": rows[:5], "test": rows}},
+        "HAERAE-HUB/HAE_RAE_BENCH_1.0": {"History": {"test": hrows}},
+    })
+    model = make_model(vocab_size=1024, max_seq_len=512)
+    k = ev.kmmlu_details(model, tiny_tok, 5, "cpu", exclude={"kmmlu/Biology/0", "kmmlu/Biology/6",
+                                                             "kmmlu/Law/1", "haerae/History/0"})
+    assert k["n"] == 5 and k["excluded"] == 2
+    assert k["by_config"]["Biology"]["excluded"] == 2  # 과목별로도 몇 개 뺐는지 남긴다
+    # 뺀 문항도 따로 채점한다 — 같은 행 7개라 뺀 2개와 나머지 5개의 정확도가 같아야 한다
+    assert k["excluded_acc"]["acc"] == k["acc"] and k["excluded_acc"]["acc_calib"] == k["acc_calib"]
+    # shots=3 → 행 0~2는 예시. 행 3(채점 첫 문항)과 행 7은 빼고, 예시 행 1은 영향 없음
+    h = ev.haerae_details(model, tiny_tok, 3, "cpu", exclude={"haerae/History/3", "haerae/History/7",
+                                                              "haerae/History/1"})
+    assert h["n"] == 3 and h["excluded"] == 2
+    assert ev._skip({"kobest/copa/4", "kobest/copa/x", "kobest/boolq/1"}, "kobest/copa/") == {4}
+    assert ev._skip(None, "kobest/copa/") is None

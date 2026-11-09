@@ -22,7 +22,7 @@ import time
 import torch
 
 from data.dataloader import ShardedDataLoader
-from eval import BENCHMARKS, bits_per_byte, perplexity, run_benchmarks
+from eval import BENCHMARKS, load_exclude, bits_per_byte, perplexity, run_benchmarks
 from sample import load_model, pick_device
 
 DEFAULT_CKPTS = ["annealing 직전=checkpoints/base_1b/step_019200.pt",
@@ -40,6 +40,8 @@ def main():
     ap.add_argument("--benches", nargs="+", choices=BENCHMARKS, default=list(BENCHMARKS))
     ap.add_argument("--bench-shots", type=int, default=5, help="KMMLU·HAE-RAE few-shot")
     ap.add_argument("--format", choices=["cloze", "mc"], default="cloze")
+    ap.add_argument("--exclude-ids", default=None,
+                    help="오염 문항 id 목록 JSON (evals/contamination.py --out-ids) — 빼고 채점")
     ap.add_argument("--limit", type=int, default=None, help="과제(과목)별 문항 수 제한")
     ap.add_argument("--skip-ppl", action="store_true", help="shard가 없는 환경에서")
     ap.add_argument("--device", default="auto")
@@ -69,7 +71,8 @@ def main():
                 print(f"  perplexity [{vname}]: {ppl:.2f} | bits-per-byte {bpb:.4f}", flush=True)
 
         r["kobest"], r["bench"] = run_benchmarks(model, tok, args.benches, device, args.shots,
-                                                 args.bench_shots, args.format, args.limit)
+                                                 args.bench_shots, args.format, args.limit,
+                                                 load_exclude(args.exclude_ids))
 
         gen = torch.Generator(device=device).manual_seed(0)
         for prompt, answers in PROBES:
