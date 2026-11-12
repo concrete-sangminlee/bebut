@@ -117,6 +117,22 @@ def test_copa_is_caught_in_eval_format_and_natural_order():
     assert run(wrong, items=copa_items)[1] == []
 
 
+def test_copa_wrong_answer_sharing_words_is_not_flagged():
+    """두 답이 앞부분을 공유하면(머리를 잘랐다 / 길렀다) 전제 + 오답 글이 키의 절반을 채워 오염으로
+    잡혔다. 정답에만 있는 단어가 겹쳐야 한다."""
+    from evals.contamination import copa_must
+
+    row = {"premise": "여자는 긴 머리가 거추장스럽다고 느꼈다.", "alternative_1": "여자는 머리를 잘랐다.",
+           "alternative_2": "여자는 머리를 길렀다.", "label": 0, "question": "결과"}
+
+    def items():
+        yield "copa", "kobest/copa/7", copa_forms(row), None, copa_must(row)
+
+    wrong = [("web", 0, f"{row['premise']} 그래서 {row['alternative_2']}")]
+    right = [("web", 0, f"{row['premise']} 그래서 {row['alternative_1']}")]
+    assert run(wrong, items=items)[1] == [] and run(right, items=items)[1] == ["kobest/copa/7"]
+
+
 def test_passage_exposure_is_reported_but_not_excluded():
     passage = ("피타고라스 정리는 직각 삼각형의 빗변의 제곱이 두 직각변의 제곱의 합과 같다는 "
                "정리이다. 유클리드 기하학에서 가장 잘 알려진 정리 가운데 하나이다.")

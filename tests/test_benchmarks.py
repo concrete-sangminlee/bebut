@@ -143,3 +143,30 @@ def test_exclude_ids_skip_contaminated_items(monkeypatch, tiny_tok):
     assert h["n"] == 3 and h["excluded"] == 2
     assert ev._skip({"kobest/copa/4", "kobest/copa/x", "kobest/boolq/1"}, "kobest/copa/") == {4}
     assert ev._skip(None, "kobest/copa/") is None
+
+
+def test_duplicate_options_and_degenerate_items(monkeypatch, tiny_tok):
+    """같은 보기가 둘이면 점수가 같아 앞쪽이 뽑힌다 — 정답이 뒤쪽 사본이면 예전엔 늘 틀렸다.
+    보기가 전부 같은 문항(KMMLU '보기없음' 등)은 채점하지 않고 센다."""
+    dup = {**KMMLU_ROW, "C": KMMLU_ROW["D"], "answer": 4}  # C == D, 정답 D
+    same = {**KMMLU_ROW, "A": "보기없음", "B": "보기없음", "C": "보기없음", "D": "보기없음", "answer": 2}
+    rows = FakeDataset([dup, dup, same])
+    install_fake_datasets(monkeypatch, {"HAERAE-HUB/KMMLU": {"Biology": {"dev": FakeDataset([KMMLU_ROW] * 5),
+                                                                         "test": rows}}})
+    model = make_model(vocab_size=1024, max_seq_len=512)
+    r = ev.kmmlu_details(model, tiny_tok, 0, "cpu")
+    assert r["n"] == 2 and r["degenerate"] == 1
+    # 모델이 C를 고르면(C == D) 정답으로 친다: 정답 사본을 고른 비율 = 정답률
+    ctx, ch, label = ev.make_kmmlu_formatter("cloze")(dup)
+    assert ch[2] == ch[label]
+
+
+def test_tie_on_duplicate_option_counts_as_correct(monkeypatch):
+    """점수가 같은 사본 중 앞쪽이 뽑혀도, 그 보기 내용이 정답과 같으면 맞힌 것이다."""
+    def fake_scores(model, tok, pairs, device, stats):
+        return [5.0 if c == "정답" else 0.0 for _, c in pairs]
+
+    monkeypatch.setattr(ev, "score_continuations", fake_scores)
+    fmt = lambda row: ("문맥 ", ["오답", "정답", "정답"], 2)  # noqa: E731 — 정답은 뒤쪽 사본
+    r = ev.evaluate_choices(None, None, fmt, [], [{}] * 3, 0, "cpu")
+    assert r["acc"] == r["acc_len"] == 1.0

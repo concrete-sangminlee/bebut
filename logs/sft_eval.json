@@ -1,11 +1,11 @@
 {
   "베이스": {
-    "heldout_acc": 71.0,
+    "heldout_acc": 66.7,
     "by_type": {
       "사실": 100.0,
       "오염대조": 100.0,
       "계산": 0.0,
-      "지시": 33.3
+      "지시": 16.7
     },
     "stop_rate": 91.7,
     "repeat_rate": 11.1,
@@ -44,7 +44,8 @@
         "answer": "조선은 태조 이성계가 건국한 나라입니다. 이성계는 고려 말기에 최충헌의 난을 진압하고, 1392년에 조선을 건국하였습니다. 그는 1393년에 조선의 3대 국왕으로 즉위하였습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -52,7 +53,8 @@
         "answer": "태양계에서 가장 큰 행성은 목성입니다. 목성은 태양계에서 가장 큰 행성이며, 지름이 약 12,500마일(19,000km)에 달합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": true
       },
       {
         "type": "사실",
@@ -60,7 +62,8 @@
         "answer": "한국 전쟁은 1950년 6월 25일에 시작되었습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -68,7 +71,8 @@
         "answer": "지구에서 가장 넓은 바다는 태평양입니다. 태평양의 면적은 약 1억 2,500만 제곱킬로미터(㎢)로, 지구 표면의 약 1/4을 차지합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -76,7 +80,8 @@
         "answer": "대한민국 국회의원의 임기는 4년입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -84,7 +89,8 @@
         "answer": "이순신 장군이 임진왜란 때 사용한 유명한 배로는 '한산섬 달도' 라는 배가 있습니다. 이 배는 임진왜란 때 이순신 장군이 사용한 배 중 하나로, 거북선을 닮은 모양을 하고 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -92,7 +98,8 @@
         "answer": "물은 섭씨 100도에서 끓습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -100,7 +107,8 @@
         "answer": "한글날은 양력 10월 9일입니다. 양력 날짜는 10월 9일, 9월 9일, 8월 9일, 7월 8일, 5월 8일, 4월 8일, 3월 8일, 2월 7일, 1월 7일, 6월 6일, 5월 5일, 4월 4일, 3월 3일, 2월 2일, 1월 1일, 5월 5일, 8월 8일, 7월 7일, 6월 5일, 4월",
         "correct": true,
         "stopped": false,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -108,7 +116,8 @@
         "answer": "광복절은 1945년 8월 15일 우리나라가 일본으로부터 광복된 것을 기념하는 국경일입니다. 이 날은 양력으로 8월 17일입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -116,7 +125,8 @@
         "answer": "독도는 행정구역상 경상북도 울릉군에 속해 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -124,7 +134,8 @@
         "answer": "제주도에서 가장 높은 산은 한라산입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -132,7 +143,8 @@
         "answer": "대한민국의 화폐 단위는 대한민국 원입니다. 1원은 100전입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -140,7 +152,8 @@
         "answer": "일본의 수도는 도쿄입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -148,7 +161,8 @@
         "answer": "프랑스의 수도는 파리입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -156,7 +170,8 @@
         "answer": "세계에서 가장 높은 산은 에베레스트 산입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -164,7 +179,8 @@
         "answer": "그리스 신화에서 신들의 왕은 제우스입니다. 제우스는 올림포스 산의 신으로, 하늘과 천둥의 신이자 바다와 지진의 신이기도 합니다. 그는 또한 포세이돈과 하데스와 같은 다른 신들의 왕이기도 합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -172,7 +188,8 @@
         "answer": "남극에 사는, 날지 못하는 새로 유명한 동물은 펭귄입니다. 펭귄은 날지 못하지만, 수영과 잠수에 능숙하며, 물속에서 헤엄치는 속도가 매우 빠릅니다. 펭귄은 남극 대륙과 그 주변 지역에서 서식하며, 주로 물고기와 오징어를 먹습니다. 펭귄은 또한, 바다표범과 물개 등의 바다 포유류도 먹습니다. 펭귄은 남극 대륙에서 가장 큰 동물 중 하나이며, 남극 대륙을 상징하는 동물 중 하나입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -180,7 +197,8 @@
         "answer": "상대성 이론을 발표한 과학자는 알버트 아인슈타인입니다. 아인슈타인은 1905년 특수 상대성 이론과 1915년 일반 상대성 이론을 발표하여 물리학의 두 가지 주요 이론을 발표했습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -188,7 +206,8 @@
         "answer": "셰익스피어의 가장 유명한 비극 작품 중 하나는 \"로미오와 줄리엣\"입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -196,7 +215,8 @@
         "answer": "1년은 보통 365일입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -204,7 +224,8 @@
         "answer": "사람의 심장은 4개의 방으로 이루어져 있습니다. 심방과 심실이 있으며, 심방과 심실 사이에는 심실이 있습니다. 심방과 심실 사이에는 심실이 있습니다. 심방과 심실 사이에는 심방과 심실 사이에 있는 빈 공간이 있습니다. 이 빈 공간은 심장의 수축과 이완을 조절하는 역할을 합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -212,7 +233,8 @@
         "answer": "무지개는 보통 7가지 색으로 이루어져 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -220,7 +242,8 @@
         "answer": "12 더하기 7은 22입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -228,7 +251,8 @@
         "answer": "15에서 8을 빼면 5가 됩니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -236,7 +260,8 @@
         "answer": "6 곱하기 7은 36입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -244,7 +269,8 @@
         "answer": "100을 4로 나누면 40이 됩니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -252,7 +278,8 @@
         "answer": "사과가 2개 남아 있습니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -260,7 +287,8 @@
         "answer": "\"고양이\"를 영어로 번역하면 \"Kittens\"입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -268,7 +296,8 @@
         "answer": "'굿모닝'은 한국어로 '모닝'을 의미하는 말입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -276,7 +305,8 @@
         "answer": "'행복'의 반대말은 '불행'입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -284,7 +314,8 @@
         "answer": "'크다'의 반대말은 '가'입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -292,15 +323,17 @@
         "answer": "1. 1\n2. 2\n3. 3\n4. 4\n5. 5",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
         "q": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은?",
         "answer": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은 '사과' 입니다.",
-        "correct": true,
+        "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -308,7 +341,8 @@
         "answer": "봄에 가볼 만한 여행지로는 제주도, 강원도, 강원도, 제주도, 제주도, 강원도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도, 제주도,",
         "correct": null,
         "stopped": false,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -316,7 +350,8 @@
         "answer": "\"친구 여러분, 이 특별한 날에 여러분과 함께하지 못해 정말 아쉽습니다. 하지만 걱정하지 마세요, 제가 여러분을 위해 멋진 축하 행사를 준비해 두었습니다. 사랑하는 사람들과 함께 사랑과 웃음, 그리고 좋은 추억을 가득 담아 이 특별한 날을 만끽하시길 바랍니다. 남은 하루도 행복과 사랑으로 가득 채우시길 바랍니다. 생일 축하해요! #생신축하 #해피뉴이어\"",
         "correct": null,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -324,18 +359,22 @@
         "answer": "1. 목표를 설정하세요: 목표를 설정하는 것은 운동을 꾸준히 하는 데 있어 중요한 첫 번째 단계입니다. 달성하고자 하는 목표를 파악하고 이를 달성하기 위한 계획을 세우세요. 예를 들어, 체중을 감량하거나 근육을 키우고 싶다면 운동 계획을 세우는 것부터 시작할 수 있습니다.\n\n2. 운동 계획을 세웁니다: 목표를 설정한 후에는 운동 계획을 세워야 합니다. 운동 계획을 세울 때는 자신의 체력 수준, 선호도, 목표에 맞는 운동을 선택하는 것이 중요합니다. 또한 운동 루틴을 꾸준히 지키는 것이 중요합니다. 일주일에 3~4일, 하루 30분씩 운동할 수 있는 시간을 정하세요.\n\n3. 운동 루틴을 지키세요: 운동 계획을 세웠다면 이제 운동 루틴을 지켜야 합니다. 운동 루틴은 사람마다 다를 수 있지만, 일반적으로 유산소 운동, 근력 운동, 스트레칭이 혼합된 것이 이상",
         "correct": null,
         "stopped": false,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       }
     ],
-    "seconds": 383
+    "seconds": 383,
+    "n_scored": 30,
+    "excluded": 1,
+    "excluded_acc": 100.0
   },
   "SFT 에폭0": {
-    "heldout_acc": 67.7,
+    "heldout_acc": 63.3,
     "by_type": {
-      "사실": 95.0,
+      "사실": 94.7,
       "오염대조": 100.0,
       "계산": 0.0,
-      "지시": 33.3
+      "지시": 16.7
     },
     "stop_rate": 100.0,
     "repeat_rate": 2.8,
@@ -374,7 +413,8 @@
         "answer": "조선을 건국한 사람은 이성계입니다. 이성계는 고려 말기에 태어나 조선 초기에 활동하였으며, 조선 왕조의 초대 국왕으로 알려져 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -382,7 +422,8 @@
         "answer": "태양계에서 가장 큰 행성은 목성입니다. 목성은 태양계에서 가장 큰 행성이며, 그 지름은 지구의 약 11배에 달합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": true
       },
       {
         "type": "사실",
@@ -390,7 +431,8 @@
         "answer": "한국 전쟁은 1950년 6월 25일에 시작되었습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -398,7 +440,8 @@
         "answer": "지구상에서 가장 넓은 바다는 태평양입니다. 태평양의 면적은 약 63,800,000제곱마일(169,000,000제곱킬로미터)에 달하며, 이는 지구 표면의 약 3분의 1을 차지합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -406,7 +449,8 @@
         "answer": "대한민국 국회의원의 임기는 4년입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -414,7 +458,8 @@
         "answer": "이순신 장군이 임진왜란 때 사용한 유명한 배의 이름은 '한산섬'에서 사용한 '한산호'입니다. 이 배는 1598년에 건조되어 1607년까지 사용되었습니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -422,7 +467,8 @@
         "answer": "물은 섭씨 100도(화씨 212도)에서 끓습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -430,7 +476,8 @@
         "answer": "한글날은 10월 9일입니다. 한글날은 1926년부터 음력 9월 29일을 양력으로 환산하여 기념하게 된 것이 시작입니다. 1949년 양력 10월 9일을 한글날로 지정하였고, 1991년 국경일로 지정되었습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -438,7 +485,8 @@
         "answer": "광복절은 1945년 8월 15일 우리나라가 일본으로부터 해방된 것을 기념하는 날입니다. 이 날은 양력으로 8월 15일에 해당합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -446,7 +494,8 @@
         "answer": "독도는 행정구역상 경상북도 울릉군 울릉읍 독도리에 속해 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -454,7 +503,8 @@
         "answer": "제주도에서 가장 높은 산은 한라산입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -462,7 +512,8 @@
         "answer": "대한민국에서 사용되는 화폐 단위는 원입니다. 1원은 100전으로 구성되어 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -470,7 +521,8 @@
         "answer": "일본의 수도는 도쿄입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -478,7 +530,8 @@
         "answer": "프랑스의 수도는 파리입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -486,7 +539,8 @@
         "answer": "세계에서 가장 높은 산은 에베레스트 산입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -494,7 +548,8 @@
         "answer": "그리스 신화에서 신들의 왕은 제우스입니다. 제우스는 그리스 신화에서 가장 강력하고 영향력 있는 신으로, 하늘과 천둥의 신이자 바다와 지진의 신입니다. 그는 또한 사랑과 전쟁의 신이기도 합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -502,7 +557,8 @@
         "answer": "남극에 사는, 날지 못하는 새로 유명한 동물은 펭귄입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -510,7 +566,8 @@
         "answer": "알버트 아인슈타인",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -518,7 +575,8 @@
         "answer": "셰익스피어가 쓴 비극 작품 중 하나는 \"햄릿\"입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -526,7 +584,8 @@
         "answer": "1년은 보통 52주입니다. 이 주기는 4년마다 윤년을 포함하여 총 365일입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -534,7 +593,8 @@
         "answer": "사람의 심장은 4개의 방으로 이루어져 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -542,7 +602,8 @@
         "answer": "무지개는 일반적으로 7가지 색으로 이루어져 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -550,7 +611,8 @@
         "answer": "12 더하기 7의 결과는 14입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -558,7 +620,8 @@
         "answer": "15에서 8을 뺀 값은 4입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -566,7 +629,8 @@
         "answer": "6 곱하기 7의 결과는 35입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -574,7 +638,8 @@
         "answer": "100을 4로 나누면 50이 됩니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -582,7 +647,8 @@
         "answer": "사과가 2개 남았습니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -590,7 +656,8 @@
         "answer": "\"고양이\"를 영어로 번역하면 다음과 같습니다: \"고양이\"",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -598,7 +665,8 @@
         "answer": "\"굿모닝\"은 한국어로 \"아침 인사\"로 번역할 수 있습니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -606,7 +674,8 @@
         "answer": "'행복'의 반대말은 '불행'입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -614,7 +683,8 @@
         "answer": "'크다'의 반대말은 '가깝다'입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -622,15 +692,17 @@
         "answer": "1. 1\n2. 2\n3. 3\n4. 4\n5. 5",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
         "q": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은?",
         "answer": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은 '바나나'입니다.",
-        "correct": true,
+        "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -638,7 +710,8 @@
         "answer": "봄에 가볼 만한 여행지 중 하나는 제주도입니다. 제주도는 아름다운 해변, 오름, 사찰 등 다양한 관광 명소가 있어 봄 여행지로 인기가 많습니다. 또한, 제주도는 벚꽃 축제로 유명하여 봄꽃의 아름다움을 만끽할 수 있습니다.",
         "correct": null,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -646,7 +719,8 @@
         "answer": "친애하는 친구, 이 특별한 날을 함께 축하해 주셔서 감사합니다. 당신의 친절과 관대함에 영원히 감사할 것입니다. 당신의 관대함은 저에게 큰 의미가 있으며, 당신의 친절은 영원히 지속될 것입니다. 당신은 진정한 친구이자 파트너입니다,",
         "correct": null,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -654,18 +728,22 @@
         "answer": "1. 목표를 설정하세요: 운동 루틴을 시작하기 전에 달성하고자 하는 목표를 정하세요. 예를 들어, 체중을 감량하고 싶다면 일주일에 3~4일 30분 이상의 유산소 운동을 목표로 삼을 수 있습니다.\n\n2. 몸에 귀를 기울이세요: 운동 루틴을 시작하기 전에 자신의 체력 수준에 맞는 운동 강도와 시간을 목표로 설정하세요. 이렇게 하면 동기를 부여하고 루틴을 고수하는 데 도움이 됩니다.\n\n3. 몸에 영양을 공급하세요: 운동 루틴을 시작하기 전에 몸에 에너지를 공급하고 운동 능력을 향상하는 데 도움이 되는 균형 잡힌 식단을 섭취하세요. 여기에는 과일, 채소, 통곡물, 저지방 단백질이 풍부한 식단이 포함됩니다. 또한 운동 사이에 충분한 휴식을 취하고 수분을 충분히 섭취하세요.",
         "correct": null,
         "stopped": true,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       }
     ],
-    "seconds": 368
+    "seconds": 368,
+    "n_scored": 30,
+    "excluded": 1,
+    "excluded_acc": 100.0
   },
   "SFT 최종": {
-    "heldout_acc": 74.2,
+    "heldout_acc": 70.0,
     "by_type": {
       "사실": 100.0,
       "오염대조": 100.0,
       "계산": 0.0,
-      "지시": 50.0
+      "지시": 33.3
     },
     "stop_rate": 97.2,
     "repeat_rate": 8.3,
@@ -704,7 +782,8 @@
         "answer": "조선은 이성계라는 인물이 건국한 나라입니다. 이성계는 고려 말기의 권문세족으로, 이성계의 아버지 이자춘은 공민왕, 이성계의 형인 이원계는 우왕, 이성계의 형인 이원익은 공양왕의 형입니다. 이성계는 조선 건국의 주도적인 역할을 한 인물입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -712,7 +791,8 @@
         "answer": "태양계에서 가장 큰 행성은 목성입니다. 목성은 태양계에서 4번째 행성이며, 8개의 위성을 가지고 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": true
       },
       {
         "type": "사실",
@@ -720,7 +800,8 @@
         "answer": "한국 전쟁은 1950년 6월 25일에 시작되었습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -728,7 +809,8 @@
         "answer": "지구상에서 가장 넓은 바다는 태평양입니다. 태평양의 면적은 약 63,800,000제곱마일(165,000,000제곱킬로미터)에 달하며, 이는 지구 표면의 약 3/4에 해당합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -736,7 +818,8 @@
         "answer": "대한민국 국회의원의 임기는 4년입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -744,7 +827,8 @@
         "answer": "이순신 장군은 임진왜란 때 사용한 유명한 배로는 판옥선, 거북선, 와키자카, 타치, 아리수 등이 있습니다. 판옥선은 판옥선(판옥거치 2척, 판옥선 12척, 판옥선 8척, 협선 2척, 협선 2척, 협선 2척, 협선 2척), 거북선은 거북선(거북선 16척, 협선 2척, 협선 2척, 협선 2척, 협선 2척), 와키자카는 와키자카(와키자카 12척, 협선 2척, 협선 2척, 협선",
         "correct": true,
         "stopped": false,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -752,7 +836,8 @@
         "answer": "물은 섭씨 100도(화씨 212도)에서 끓습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -760,7 +845,8 @@
         "answer": "한글날은 음력 9월 29일입니다. 양력으로는 10월 9일에 해당합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -768,7 +854,8 @@
         "answer": "광복절은 1945년 8월 15일, 우리나라가 일본으로부터 해방된 것을 기념하는 국경일입니다. 8월 15일은 양력으로 환산하면 9월 1일입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -776,7 +863,8 @@
         "answer": "독도는 행정구역상 경상북도 울릉군 울릉읍 독도리에 속해 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -784,7 +872,8 @@
         "answer": "제주도에서 가장 높은 산은 한라산입니다. 한라산은 해발 1,950m로, 제주도의 상징적인 산으로 알려져 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -792,7 +881,8 @@
         "answer": "대한민국에서 사용되는 화폐 단위는 원입니다. 1원은 100전으로 구성되어 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -800,7 +890,8 @@
         "answer": "일본의 수도는 도쿄입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -808,7 +899,8 @@
         "answer": "프랑스의 수도는 파리입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "오염대조",
@@ -816,7 +908,8 @@
         "answer": "세계에서 가장 높은 산은 에베레스트 산입니다. 이 산은 네팔과 중국의 국경에 위치해 있으며, 해발 8,848미터(29,029피트)의 높이를 자랑합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -824,7 +917,8 @@
         "answer": "그리스 신화에서 신들의 왕은 제우스입니다. 제우스는 하늘과 천둥의 신이자 그리스 신화에서 가장 강력한 신 중 하나입니다. 그는 종종 \"하늘의 왕\"이라고 불리는데, 그의 권위는 그리스 신화 전체에서 분명하게 드러납니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -832,7 +926,8 @@
         "answer": "남극에 사는, 날지 못하는 새로 유명한 동물은 펭귄입니다. 펭귄은 날지 못하지만, 수영과 잠수에 능숙하며, 물속에서 생활하기에 적합한 몸을 가지고 있습니다. 펭귄은 남극 대륙과 그 주변 섬, 그리고 남극의 해안 지역에서 서식하며, 바다표범을 사냥하거나 물고기 떼를 쫓아다니며 생활합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -840,7 +935,8 @@
         "answer": "알버트 아인슈타인",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -848,7 +944,8 @@
         "answer": "셰익스피어가 쓴 유명한 비극 작품 중 하나는 \"로미오와 줄리엣\"입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -856,7 +953,8 @@
         "answer": "1년은 보통 365일입니다. 윤년은 366일입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -864,7 +962,8 @@
         "answer": "사람의 심장은 4개의 방으로 이루어져 있습니다. 심방, 심실, 심방중격, 심실중격결손으로 구성되어 있습니다. 심방은 심실의 벽에 붙어 있으며, 심실은 심방보다 작은 방으로 심방으로부터 혈액을 받아 심실로 보냅니다. 심실에는 2개의 방이 있으며, 이 두 방은 심실 중격에 의해 분리되어 있습니다. 심실 중격 결손은 심실 중격으로부터 혈액을 받아 심실 중격에 의해 폐동맥으로 내보내는 역할을 합니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       },
       {
         "type": "사실",
@@ -872,7 +971,8 @@
         "answer": "무지개는 일반적으로 7가지 색으로 이루어져 있습니다. 빨강, 주황, 노랑, 초록, 파랑, 남색, 보라입니다. 하지만, 무지개의 일곱 가지 색은 모두 같은 비율로 구성되어 있지 않습니다. 예를 들어, 빨강은 파장이 가장 길고 보라색은 파장이 가장 짧습니다. 따라서 무지개의 일곱 가지 색은 모두 다른 비율로 구성되어 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -880,7 +980,8 @@
         "answer": "12 더하기 7은 14입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -888,7 +989,8 @@
         "answer": "15에서 8을 뺀 값은 4입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -896,7 +998,8 @@
         "answer": "6 곱하기 7의 결과는 28입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -904,7 +1007,8 @@
         "answer": "100을 4로 나누면 50이 됩니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "계산",
@@ -912,7 +1016,8 @@
         "answer": "사과가 2개 남았습니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -920,7 +1025,8 @@
         "answer": "\"나는 고양이가 있다.\"",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -928,7 +1034,8 @@
         "answer": "\"굿모닝\"은 \"좋은 아침\"으로 번역할 수 있습니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -936,7 +1043,8 @@
         "answer": "'행복'의 반대말은 '불행'입니다.",
         "correct": true,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -944,7 +1052,8 @@
         "answer": "'크다'의 반대말은 '가깝다' 또는 '크다'입니다.",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
@@ -952,15 +1061,17 @@
         "answer": "1. 1\n2. 2\n3. 3\n4. 4\n5. 5",
         "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "지시",
         "q": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은?",
         "answer": "'가지, 바나나, 사과' 중에서 과일이 아닌 것은 '사과'입니다.",
-        "correct": true,
+        "correct": false,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -968,7 +1079,8 @@
         "answer": "봄에 가볼 만한 여행지 중 하나는 제주도입니다. 제주도는 아름다운 해변, 오름, 사찰 등 다양한 관광 명소가 있어 여행객들에게 인기가 많습니다. 또한, 제주도는 벚꽃 축제로 유명하여 봄철 벚꽃을 즐길 수 있는 최적의 장소로 알려져 있습니다.",
         "correct": null,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -976,7 +1088,8 @@
         "answer": "친애하는 친구,\n\n당신의 생일을 축하합니다! 이 특별한 날을 당신과 함께 보낼 수 있어서 정말 기쁩니다. 이번 생일이 사랑과 웃음, 그리고 당신을 향한 저의 사랑과 헌신의 시간이 되기를 바랍니다.\n\n이번 생일이 영원히 기억에 남을 수 있는 하루가 되기를 기원합니다. 앞으로도 계속 성장하고, 배우고, 서로를 위해 더 많은 것을 할 수 있기를 바랍니다.\n\n생일 축하해요, 친구!\n\n사랑으로",
         "correct": null,
         "stopped": true,
-        "repetitive": false
+        "repetitive": false,
+        "excluded": false
       },
       {
         "type": "서술",
@@ -984,9 +1097,13 @@
         "answer": "1. 목표를 설정하세요: 운동 루틴을 시작하기 전에 달성하고자 하는 목표를 정하세요. 체중 감량, 근육 강화, 지구력 향상 등 구체적이고 달성 가능한 목표를 설정하세요. 이렇게 하면 동기를 부여하고 계획대로 진행하는 데 도움이 됩니다.\n\n2. 운동 계획을 세웁니다: 목표를 설정한 후에는 운동 계획을 세웁니다. 각 운동 세션에 대해 완료해야 하는 운동 요일과 운동 강도를 결정하세요. 이렇게 하면 일관성 있고 꾸준히 운동하는 데 도움이 됩니다.\n\n3. 몸에 귀 기울이기: 운동 루틴을 시작하기 전에 몸에 귀를 기울이세요. 자신의 체력 수준에 맞게 운동 강도와 시간을 조절하세요. 몸에 귀를 기울이면 부상을 예방하고 운동 효과를 극대화하는 데 도움이 됩니다.",
         "correct": null,
         "stopped": true,
-        "repetitive": true
+        "repetitive": true,
+        "excluded": false
       }
     ],
-    "seconds": 375
+    "seconds": 375,
+    "n_scored": 30,
+    "excluded": 1,
+    "excluded_acc": 100.0
   }
 }

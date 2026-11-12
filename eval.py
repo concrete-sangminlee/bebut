@@ -200,7 +200,8 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
           학습 중에 본 문항을 기억해서 얻은 이득(기억 효과)이 나온다.
 
     acc        log P(choice | context) 합이 가장 큰 선택지 (원시 점수)
-    acc_len    위 값을 선택지 바이트 수로 나눈 것 (lm-eval-harness의 acc_norm)
+    acc_len    위 값을 선택지 UTF-8 바이트 수로 나눈 것 (lm-eval-harness의 acc_bytes. 글자 수로 나누는
+               acc_norm과는 다르다 — 한글은 3바이트라 숫자·영문 보기와 섞이면 순위가 달라질 수 있다)
     acc_calib  비조건부 정규화 (normalized_score) — 이 저장소의 기본 지표
 
     예측 분포도 지표별로 센다. 한쪽으로 쏠리면 정확도는 라벨 분포일 뿐이다.
@@ -215,11 +216,14 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
     names = ("acc", "acc_len", "acc_calib")
     correct = dict.fromkeys(names, 0)
     preds = {n: {} for n in names}
-    total = excluded = 0
+    total = excluded = degenerate = 0
     ex_correct = dict.fromkeys(names, 0)
     for i, row in enumerate(test_rows):
         held_out = bool(skip) and i in skip
         ctx, choices, label = fmt(row)
+        if len(set(choices)) == 1:  # 보기가 전부 같은 문항(KMMLU의 '보기없음'·'복원중' 등) — 채점 불가
+            degenerate += 1
+            continue
         cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
         if todo:
@@ -233,16 +237,19 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
         }
         for n in names:
             p = max(range(len(choices)), key=scores[n].__getitem__)
+            # 같은 보기가 두 번 나오면 점수도 같아 앞쪽이 뽑힌다 — 정답이 뒤쪽 사본이어도 맞힌 것으로
+            # (예전엔 이런 KMMLU 문항 7개는 모델이 아무리 좋아도 틀렸다)
+            hit = int(choices[p] == choices[label])
             if held_out:
-                ex_correct[n] += int(p == label)
+                ex_correct[n] += hit
                 continue
             preds[n][p] = preds[n].get(p, 0) + 1
-            correct[n] += int(p == label)
+            correct[n] += hit
         excluded += held_out
         total += not held_out
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
-            "truncated": stats["truncated"], "excluded": excluded,
+            "truncated": stats["truncated"], "excluded": excluded, "degenerate": degenerate,
             "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
 
 
@@ -299,6 +306,7 @@ def _aggregate(per):
     n = sum(r["n"] for r in per.values())
     ex = sum(r.get("excluded", 0) for r in per.values())
     out = {"n": n, "truncated": sum(r["truncated"] for r in per.values()), "excluded": ex,
+           "degenerate": sum(r.get("degenerate", 0) for r in per.values()),
            "excluded_acc": {k: sum(r["excluded_acc"][k] * r["excluded"] for r in per.values()
                                    if r.get("excluded")) / ex for k in names} if ex else None}
     for k in names:
