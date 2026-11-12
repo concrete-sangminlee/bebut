@@ -14,6 +14,7 @@ import torch
 torch.set_num_threads(32)  # 학습의 데이터 로딩용 코어를 남겨둔다
 
 from model import GPT
+from sample import load_checkpoint
 from tokenizer.bpe import ByteBPETokenizer
 import configs.base_1b as conf
 
@@ -30,7 +31,7 @@ PROMPTS = [
 ]
 
 t0 = time.time()
-ckpt = torch.load(CKPT, map_location="cpu", weights_only=False)
+ckpt = load_checkpoint(CKPT)
 model = GPT(conf.model)
 model.load_state_dict(ckpt["model"])
 model.eval()

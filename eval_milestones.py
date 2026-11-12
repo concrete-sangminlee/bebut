@@ -26,6 +26,7 @@ import importlib
 from eval import FORMATTERS, eval_kobest, perplexity
 from data.dataloader import ShardedDataLoader
 from model import GPT
+from sample import load_checkpoint
 from tokenizer.bpe import ByteBPETokenizer
 
 
@@ -66,7 +67,7 @@ def main():
                 continue
             t0 = time.time()
             try:
-                ckpt = torch.load(path, map_location="cpu", weights_only=False)
+                ckpt = load_checkpoint(path)
             except Exception as e:  # 쓰는 중이거나 잘린 파일 — 예전엔 여기서 죽어 뒤의 스냅샷도 못 봤다
                 print(f"건너뜀: {path}를 읽지 못했다 ({type(e).__name__}) — 다음 실행 때 다시 시도")
                 continue

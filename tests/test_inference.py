@@ -221,3 +221,22 @@ def test_nucleus_on_top_candidates_equals_full_sort():
             a = sample_next(logits, 0.7, tp, generator=torch.Generator().manual_seed(s))
             b = full_sort(logits, 0.7, tp, torch.Generator().manual_seed(s))
             assert torch.equal(a, b)
+
+
+def test_load_checkpoint_mmap_returns_same_weights(tmp_path):
+    """mmap으로 읽어도 가중치가 같다. 옵티마이저 상태가 있는 사전학습 체크포인트 모양으로."""
+    from sample import load_checkpoint
+    from tests.conftest import make_model
+
+    m = make_model(vocab_size=300, max_seq_len=64)
+    path = tmp_path / "ck.pt"
+    torch.save({"model": m.state_dict(), "optimizer": {"state": {0: {"exp_avg": torch.randn(1000)}}},
+                "train_loader": {"step": 3, "seed": 42, "mode": "epoch", "pos": 6, "batch_size": 2},
+                "step": 3, "config": "ci_tiny"}, path)
+    ck = load_checkpoint(str(path))
+    assert ck["step"] == 3 and ck["train_loader"]["pos"] == 6
+    for k, v in m.state_dict().items():
+        assert torch.equal(ck["model"][k], v), k
+    legacy = tmp_path / "legacy.pt"  # zip이 아닌 예전 형식은 mmap 없이 읽는다
+    torch.save({"model": m.state_dict(), "step": 1}, legacy, _use_new_zipfile_serialization=False)
+    assert torch.equal(load_checkpoint(str(legacy))["model"]["tok_emb.weight"], m.state_dict()["tok_emb.weight"])
