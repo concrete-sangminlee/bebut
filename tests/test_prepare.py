@@ -112,9 +112,7 @@ def test_anneal_val_never_reaches_train_and_dedup_repeat_counts(tmp_path, monkey
         dict(label="instruction", parts=[("inst", None)], ratio=0.2, threshold=None, repeat=3, korean=True,
              dedup=False, instruction=True),
     ])
-    import datasets
-
-    monkeypatch.setattr(datasets, "load_dataset", lambda name, config, split, streaming: FakeStream(rows[name]))
+    monkeypatch.setattr(P, "load_dataset", lambda name, config, split, streaming: FakeStream(rows[name]))
     out = str(tmp_path / "anneal")
     meta = A.run(SimpleNamespace(tokens=10_000_000, tokenizer=TOK, quality="data/quality_ko.npz", out_dir=out,
                                  val_ratio=0.25, workers=2, overwrite=False))

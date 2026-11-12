@@ -25,7 +25,6 @@ import unicodedata
 from multiprocessing import Pool
 
 import numpy as np
-from datasets import load_dataset
 
 from tokenizer.bpe import ByteBPETokenizer
 
@@ -95,6 +94,14 @@ class ShardWriter:
 
     def close(self):
         self._flush()
+
+
+def load_dataset(name, config, split, streaming):
+    """datasets는 데이터 준비에서만 쓴다 — 늦게 import해서 이 모듈을 불러오는 테스트·도구가
+    datasets 없이도 돈다 (CI 테스트 환경엔 datasets가 없다). 테스트는 이 함수를 바꿔 끼운다."""
+    from datasets import load_dataset as _load
+
+    return _load(name, config, split=split, streaming=streaming)
 
 
 def clear_old_shards(out_dir, overwrite):

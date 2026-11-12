@@ -106,7 +106,7 @@ def build_stream(src):
     instruction은 두 데이터셋. 예산에 도달하면 호출 측에서 중단하므로
     repeat는 넉넉히 잡아도 된다.
     """
-    from datasets import load_dataset
+    from .prepare import load_dataset  # 늦은 import (테스트가 바꿔 끼운다)
 
     for pass_idx in range(src["repeat"]):
         for name, config in src["parts"]:
