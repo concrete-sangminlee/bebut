@@ -62,6 +62,78 @@ def test_fit_messages_truncates_single_huge_message(real_tok):
     assert len(ids) <= 64 and real_tok.decode(ids).endswith("끝<|im_end|>\n<|im_start|>assistant\n")
 
 
+def test_fit_messages_huge_system_prompt_keeps_question_and_template(real_tok):
+    """RAG식 클라이언트처럼 문서를 system에 넣어 system만으로 예산을 넘는 경우. 예전에는 질문이
+    빈 문자열이 되고 <|im_start|>system 머리까지 잘렸다."""
+    doc = "대한민국 헌법 제1조 대한민국은 민주공화국이다. 주권은 국민에게 있다. " * 150
+    msgs = [{"role": "system", "content": "참고 문서: " + doc},
+            {"role": "user", "content": "위 문서에서 주권은 누구에게 있다고 하나요?"}]
+    for budget in (64, 300, 1792):
+        ids = fit_messages(real_tok, msgs, budget)
+        text = real_tok.decode(ids)
+        assert len(ids) <= budget and "�" not in text
+        assert text.startswith("<|im_start|>system\n참고 문서")
+        assert text.endswith("<|im_start|>user\n위 문서에서 주권은 누구에게 있다고 하나요?<|im_end|>\n"
+                             "<|im_start|>assistant\n")
+
+
+def test_fit_messages_cuts_only_at_user_turns_and_never_breaks_characters(real_tok):
+    msgs = []
+    for i in range(6):
+        msgs += [{"role": "user", "content": f"질문{i} " + "가나다라 " * 30},
+                 {"role": "assistant", "content": f"답{i} " + "마바사아 " * 30}]
+    msgs.append({"role": "user", "content": "마지막 질문"})
+    for budget in range(40, 900, 10):
+        text = real_tok.decode(fit_messages(real_tok, msgs, budget))
+        assert text.startswith("<|im_start|>user\n")  # 질문이 빠진 assistant 턴으로 시작하지 않는다
+    # 바이트 단위 토큰을 글자 중간에서 자르면 �가 생겼다 (이모지 · 드문 음절)
+    rare = "".join(chr(0xAC00 + (i * 7919) % 11172) for i in range(3000))
+    for content in ("🎉🥳👍" * 400 + "끝", rare + "끝"):
+        for budget in range(30, 130, 7):
+            ids = fit_messages(real_tok, [{"role": "user", "content": content}], budget)
+            text = real_tok.decode(ids)
+            assert len(ids) <= budget and "�" not in text and text.startswith("<|im_start|>user\n")
+            assert text.endswith("끝<|im_end|>\n<|im_start|>assistant\n")
+
+
+def test_fit_messages_keeps_the_cut_stable_for_prefix_cache(real_tok):
+    """창이 찬 뒤에도 자르는 자리가 몇 턴씩 유지돼야 이전 턴의 K·V를 재사용할 수 있다.
+    예전에는 한 턴씩 밀어내 매 턴 system 뒤부터 창 전체를 다시 계산했다."""
+    import random
+
+    from model import KVCache
+
+    rng = random.Random(0)
+    words = "대한민국 헌법 주권은 국민에게 있고 서울 인공지능 데이터 학습 모델 토큰 문맥 캐시 질문".split()
+
+    def sent(n):
+        return " ".join(rng.choice(words) for _ in range(n)) + "."
+
+    budget, cache = 1792, KVCache(1, 2048)
+    msgs = [{"role": "system", "content": "너는 친절한 비서다."}]
+    reused = recomputed = 0
+    for turn in range(60):
+        msgs.append({"role": "user", "content": sent(rng.randint(8, 25))})
+        ids = fit_messages(real_tok, msgs, budget)
+        k = cache.reuse(ids)
+        reply = sent(rng.randint(30, 70))
+        cache.tokens = ids + real_tok.encode(reply)
+        cache.pos = len(cache.tokens)
+        msgs.append({"role": "assistant", "content": reply})
+        if turn >= 25:  # 창이 다 찬 뒤
+            reused, recomputed = reused + k, recomputed + len(ids) - k
+    assert reused > 3 * recomputed  # 예전 구현은 재사용 2%대
+
+
+def test_fit_messages_rejects_impossible_budget(real_tok):
+    import pytest
+
+    with pytest.raises(ValueError):
+        fit_messages(real_tok, [{"role": "user", "content": "안녕"}], 0)
+    with pytest.raises(ValueError):  # 템플릿조차 안 들어가는 예산
+        fit_messages(real_tok, [{"role": "system", "content": "긴 시스템"}, {"role": "user", "content": "안녕"}], 3)
+
+
 def test_stream_decoder_never_emits_broken_syllables(real_tok):
     text = "대한민국은 동아시아의 한반도 남부에 있는 나라이다 🎉"
     ids = real_tok.encode(text)
