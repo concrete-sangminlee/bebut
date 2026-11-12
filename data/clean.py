@@ -20,11 +20,31 @@ def hangul_ratio(text: str) -> float:
 
 
 def repetition_ratio(text: str, n: int = 20) -> float:
-    """n-gram(문자) 중복 비율 — 보일러플레이트·스팸 감지."""
+    """문자 n-gram 중복 비율 — 보일러플레이트·스팸 감지. 블록이 k번 반복되면 약 1 - 1/k.
+
+    모든 위치에서 n-gram을 뗀다(슬라이딩). 예전에는 0, 20, 40 … 자리에서만 떼서, 길이가 20의
+    배수와 어긋나는 문단(예: 507자)을 10번 반복해도 n-gram이 전부 달라 0.0이 나왔다.
+    """
     if len(text) < n * 2:
         return 0.0
-    grams = [text[i : i + n] for i in range(0, len(text) - n, n)]
+    grams = [text[i : i + n] for i in range(len(text) - n + 1)]
     return 1.0 - len(set(grams)) / len(grams)
+
+
+VAL_FRACTION = 0.005  # data.prepare와 data.prepare_anneal이 같은 값을 써야 한다
+
+
+def is_val(text: str, fraction: float = VAL_FRACTION) -> bool:
+    """문서 내용의 해시로 val 문서인지 정한다.
+
+    예전에는 '처음 나온 문서 N토큰'을 val로 썼다. 그러면 (1) annealing이 교과서·위키·
+    instruction을 dedup 없이 여러 번 반복할 때 val 문서가 2회차부터 train에 들어갔고,
+    (2) annealing이 같은 데이터셋을 처음부터 다시 읽어 사전학습 val 문서를 train에 넣었다.
+    해시로 정하면 같은 문서는 반복 회차·스크립트·순서와 무관하게 늘 같은 쪽이다.
+    """
+    h = hashlib.blake2b(text[:2000].encode("utf-8", "surrogatepass"), digest_size=8,
+                        person=b"bebut-val").digest()
+    return int.from_bytes(h, "big") < fraction * 2**64
 
 
 def keep_document(text: str, korean_source: bool = True) -> bool:
