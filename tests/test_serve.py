@@ -205,3 +205,11 @@ def test_usage_reports_cached_tokens_and_streams_usage_chunk(server):
     ev2 = sse_events(post(server, "/v1/chat/completions", {**CHAT, "stream": True})[1])
     assert all("usage" not in e for e in ev2[:-1])
     assert request(server, "POST", "/v1/chat/completions", {**CHAT, "stream_options": 3})[0] == 400
+
+
+def test_lone_surrogate_is_answered_not_dropped(server):
+    """JS가 이모지 중간을 자른 문자열은 JSON에서 짝 없는 서로게이트(\\ud83d)가 된다. 예전엔
+    토큰화에서 UnicodeEncodeError가 나 서버가 응답 없이 연결을 끊었다."""
+    raw = '{"messages":[{"role":"user","content":"안녕 \\ud83d"}],"max_tokens":2}'.encode()
+    status, _, payload = request(server, "POST", "/v1/chat/completions", raw=raw)
+    assert status == 200 and json.loads(payload)["choices"][0]["message"]["role"] == "assistant"

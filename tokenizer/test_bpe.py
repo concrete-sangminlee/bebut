@@ -55,7 +55,11 @@ def main():
         for t in tests:
             assert tok2.encode(t) == tok.encode(t)
 
-    # 5) pretokenize 동작 확인
+    # 5) 짝 없는 서로게이트는 예외 대신 U+FFFD로 (정상 텍스트는 그대로)
+    assert tok.decode(tok.encode("a\ud83db")) == "a\ufffdb"
+    assert tok.encode("a\ud83db") == tok.encode("a\ufffdb")
+
+    # 6) pretokenize 동작 확인
     assert pretokenize("저는 학교에 갑니다") == ["저는", " 학교에", " 갑니다"]
 
     comp = len("안녕하세요. 저는 서울대학교 학생입니다.") / len(tok.encode("안녕하세요. 저는 서울대학교 학생입니다."))

@@ -198,3 +198,26 @@ def test_empty_prompt_is_rejected_and_cache_survives(tiny_model):
     p = torch.randint(0, 1000, (1, 8))
     assert torch.equal(tiny_model.generate(p, 4, temperature=0.0, cache=cache),
                        tiny_model.generate(p, 4, temperature=0.0))
+
+
+def test_nucleus_on_top_candidates_equals_full_sort():
+    """top-p를 상위 후보만 정렬해 계산해도 전체 정렬과 같은 토큰이 나와야 한다 (같은 seed).
+    분포가 평평해 nucleus가 상위 후보 밖까지 이어지면 전체 정렬로 넘어간다."""
+    import torch.nn.functional as F
+
+    def full_sort(logits, temperature, top_p, generator):
+        probs = F.softmax(logits.float() / temperature, dim=-1)
+        sp, si = probs.sort(descending=True)
+        sp = sp.masked_fill(sp.cumsum(-1) - sp > top_p, 0.0)
+        return si.gather(-1, torch.multinomial(sp / sp.sum(-1, keepdim=True), 1, generator=generator))
+
+    V = 65536
+    base = -1.1 * torch.log(torch.arange(1, V + 1).float())  # 언어 모델처럼 뾰족한 분포
+    for s in range(30):
+        g = torch.Generator().manual_seed(s)
+        peaked = (base[torch.randperm(V, generator=g)] + torch.randn(V, generator=g) * 0.3)[None]
+        flat = torch.randn(3, V, generator=g) * 0.2  # 전체 정렬 경로
+        for logits, tp in ((peaked, 0.95), (peaked, 0.5), (flat, 0.99)):
+            a = sample_next(logits, 0.7, tp, generator=torch.Generator().manual_seed(s))
+            b = full_sort(logits, 0.7, tp, torch.Generator().manual_seed(s))
+            assert torch.equal(a, b)

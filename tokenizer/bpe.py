@@ -12,6 +12,7 @@ byte-level인 이유: 텍스트를 UTF-8 바이트로 다루면 기본 vocab 256
 
 import heapq
 import json
+import re
 from collections import Counter
 from functools import lru_cache
 
@@ -27,6 +28,8 @@ def _count_batch(texts: list[str]) -> Counter:
         c.update(pretokenize(t))
     return c
 
+
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
 class ByteBPETokenizer:
     def __init__(self, merges: list[tuple[int, int]], special_tokens: list[str] | None = None):
@@ -79,7 +82,18 @@ class ByteBPETokenizer:
 
     def encode(self, text: str, allowed_special: bool = False) -> list[int]:
         """allowed_special=True면 텍스트 내 special token 문자열을 해당 id로 인코딩.
-        학습 데이터의 일반 텍스트에는 False(사용자 입력이 special을 위조 못 하게)."""
+        학습 데이터의 일반 텍스트에는 False(사용자 입력이 special을 위조 못 하게).
+
+        짝 없는 서로게이트(\\ud83d 등 — JS가 이모지 중간을 자른 문자열을 JSON으로 보내면 생긴다)는
+        UTF-8로 인코딩할 수 없어 예전엔 예외로 죽었다(서버는 응답 없이 연결을 끊었다).
+        U+FFFD로 바꿔 인코딩한다. 정상 텍스트의 결과는 그대로다.
+        """
+        try:
+            return self._encode(text, allowed_special)
+        except UnicodeEncodeError:
+            return self._encode(_LONE_SURROGATE.sub("\ufffd", text), allowed_special)
+
+    def _encode(self, text: str, allowed_special: bool) -> list[int]:
         if allowed_special and self.special_tokens:
             import re
 

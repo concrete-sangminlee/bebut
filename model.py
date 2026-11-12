@@ -275,12 +275,22 @@ def apply_repetition_penalty(logits, seen: torch.Tensor, penalty: float):
     return torch.where(seen, penalized, logits)
 
 
+_NUCLEUS_K = 1024  # top-p 후보를 먼저 이만큼만 정렬해 본다
+
+
 def sample_next(logits, temperature=0.8, top_p=1.0, top_k=0, min_p=0.0, generator=None):
     """logits (B, V) → 다음 토큰 (B, 1).
 
     temperature <= 0이면 greedy. 필터 순서는 temperature → top-k → min-p → top-p.
     min-p: 최고 확률의 min_p배 미만인 토큰을 버린다 — 분포가 뾰족할 땐 후보를 좁히고
     평평할 땐 넓혀서, 고정 top-p보다 온도를 올렸을 때 덜 무너진다.
+    주의: HF transformers와 llama.cpp는 top-p를 min-p보다 먼저 건다. 둘을 함께 쓰면
+    내보낸 HF·GGUF 모델과 후보 집합이 다를 수 있다 (하나만 쓰면 같다).
+
+    top-p는 확률이 큰 _NUCLEUS_K개만 정렬해 누적합을 본다. 그 안에서 누적 확률이 top_p를
+    넘으면 그 뒤 토큰은 어차피 모두 잘리므로 전체 정렬과 결과가 같다. 넘지 못할 때(분포가
+    매우 평평할 때)만 전체 65K를 정렬한다. 예전엔 매 토큰 전체를 정렬해, CPU에서 토큰당
+    수 ms(125M 모델 디코드 시간의 30~50%)가 샘플링에 들었다.
     """
     if temperature <= 0:
         return logits.argmax(-1, keepdim=True)
@@ -292,13 +302,17 @@ def sample_next(logits, temperature=0.8, top_p=1.0, top_k=0, min_p=0.0, generato
     if min_p > 0:
         floor = probs.max(-1, keepdim=True).values * min_p
         probs = probs.masked_fill(probs < floor, 0.0)
-        # 다시 정규화해야 top-p의 누적합이 남은 후보 기준이 된다 (HF와 같은 순서·의미)
+        # 다시 정규화해야 top-p의 누적합이 남은 후보 기준이 된다
         probs = probs / probs.sum(-1, keepdim=True)
+    if top_p >= 1.0:  # 정렬이 필요 없다
+        return torch.multinomial(probs, 1, generator=generator)
     # nucleus (top-p) 샘플링: 누적 확률이 top_p를 넘기 직전까지만 남긴다
-    sorted_p, sorted_idx = probs.sort(descending=True)
-    if top_p < 1.0:
+    sorted_p, sorted_idx = torch.topk(probs, min(_NUCLEUS_K, probs.size(-1)), dim=-1)
+    cum = sorted_p.cumsum(-1)
+    if bool((cum[..., -1] <= top_p).any()):  # nucleus가 _NUCLEUS_K 밖까지 이어진다 → 전체 정렬
+        sorted_p, sorted_idx = probs.sort(descending=True)
         cum = sorted_p.cumsum(-1)
-        sorted_p = sorted_p.masked_fill(cum - sorted_p > top_p, 0.0)
+    sorted_p = sorted_p.masked_fill(cum - sorted_p > top_p, 0.0)
     sorted_p = sorted_p / sorted_p.sum(-1, keepdim=True)
     pick = torch.multinomial(sorted_p, 1, generator=generator)
     return sorted_idx.gather(-1, pick)

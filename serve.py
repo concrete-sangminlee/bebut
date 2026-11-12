@@ -274,7 +274,7 @@ def make_handler(engine: Engine, verbose=False):
                 ids = engine.chat_prompt(req, p["max_tokens"]) if chat else engine.text_prompt(req)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return self._error(400, "UTF-8 JSON 형식이 아닙니다")
-            except BadRequest as e:
+            except (BadRequest, ValueError) as e:  # ValueError: 프롬프트를 만들 수 없는 요청 (예: 예산 초과)
                 return self._error(400, str(e))
 
             rid = ("chatcmpl-" if chat else "cmpl-") + uuid.uuid4().hex[:24]
