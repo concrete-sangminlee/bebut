@@ -22,6 +22,8 @@
 
 ![학습 곡선](docs/training_curves.png)
 
+<sub>사전학습 loss(step 19,200까지)와 마일스톤 평가(step 20,000까지). annealing 구간은 로그가 없어 빠졌고, KOBEST는 채점 버그 이전 † 값입니다.</sub>
+
 ## 결과 요약
 
 > **⚠️ KOBEST 수치 정정 필요 (2026-11).** 아래 KOBEST 점수(†)는 **선택지의 첫 토큰을
@@ -218,7 +220,7 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 ./watch_milestones.sh &                          # 스냅샷 생길 때마다 자동 평가
 
 # 5) 평가 — perplexity·BPB + KOBEST + KMMLU(5-shot) + HAE-RAE (오염 문항 제외)
-python final_eval.py --exclude-ids evals/contaminated_ids.json
+python final_eval.py --exclude-ids evals/contaminated_ids.json   # → logs/final_eval_v2.json
 python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
 # 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다

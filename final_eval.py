@@ -17,6 +17,7 @@ annealing 직전(step 19,200)과 최종(latest) 모델을 같은 조건으로 �
 """
 import argparse
 import json
+import os
 import time
 
 import torch
@@ -25,7 +26,10 @@ from data.dataloader import ShardedDataLoader
 from eval import BENCHMARKS, load_exclude, bits_per_byte, perplexity, run_benchmarks
 from sample import load_model, pick_device
 
-DEFAULT_CKPTS = ["annealing 직전=checkpoints/base_1b/step_019200.pt",
+# annealing 직전: 지금의 train.py는 전환 직전 step(19,199)을 자동으로 스냅샷한다. 1.2B 원래 실행은
+# pause_at_19200.sh로 만든 step_019200.pt를 썼다 — 있는 쪽을 쓴다
+PRE_ANNEAL = ["checkpoints/base_1b/step_019199.pt", "checkpoints/base_1b/step_019200.pt"]
+DEFAULT_CKPTS = ["annealing 직전=" + next((p for p in PRE_ANNEAL if os.path.exists(p)), PRE_ANNEAL[0]),
                  "최종=checkpoints/base_1b/latest.pt"]
 VALS = [("웹", "data/shards_26b"), ("고품질", "data/shards_anneal")]
 PROBES = [("대한민국의 수도는", ["서울"]), ("훈민정음을 창제한 왕은", ["세종"]),
@@ -45,7 +49,8 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="과제(과목)별 문항 수 제한")
     ap.add_argument("--skip-ppl", action="store_true", help="shard가 없는 환경에서")
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--out", default="logs/final_eval.json")
+    ap.add_argument("--out", default="logs/final_eval_v2.json",
+                    help="결과 JSON (logs/final_eval.json은 채점 버그 이전 † 기준값이라 덮어쓰지 않는다)")
     args = ap.parse_args()
 
     device = pick_device(args.device)
@@ -53,6 +58,9 @@ def main():
     results = {}
     for spec in args.ckpts:
         label, path = spec.split("=", 1)
+        if not os.path.exists(path):  # 하나가 없다고 전체를 멈추지 않는다
+            print(f"건너뜀: {label} — {path}가 없다")
+            continue
         t0 = time.time()
         model, tok = load_model(path, args.tokenizer, device, torch.float32)
         step = model.meta.get("step")
