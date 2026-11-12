@@ -466,6 +466,7 @@ async function ask() {
         buf = buf.slice(i + 2);
         if (!line || line === "[DONE]") continue;
         const obj = JSON.parse(line);
+        if (obj.error) throw new Error(obj.error.message || "서버 오류");  // 스트리밍 중 서버 오류
         if (obj.usage) usage = obj.usage;
         const c = obj.choices?.[0];
         if (!c) continue;

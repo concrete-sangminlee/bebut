@@ -213,3 +213,78 @@ def test_lone_surrogate_is_answered_not_dropped(server):
     raw = '{"messages":[{"role":"user","content":"안녕 \\ud83d"}],"max_tokens":2}'.encode()
     status, _, payload = request(server, "POST", "/v1/chat/completions", raw=raw)
     assert status == 200 and json.loads(payload)["choices"][0]["message"]["role"] == "assistant"
+
+
+def test_non_finite_numbers_and_tiny_temperature_get_answers(server):
+    """1e400(JSON에선 유효, 파이썬에선 inf)는 예전에 OverflowError로 핸들러가 죽어 응답 없이 끊겼다.
+    아주 작은 온도는 logits/T가 inf가 되어 샘플링이 죽었다."""
+    msg = '{"messages":[{"role":"user","content":"안녕"}],%s}'
+    for field in ('"max_tokens":1e400', '"top_k":1e400', '"seed":1e400', '"temperature":1e400'):
+        status, _, payload = request(server, "POST", "/v1/chat/completions", raw=(msg % field).encode())
+        assert status == 400 and "숫자" in json.loads(payload)["error"]["message"], field
+    status, body = post(server, "/v1/chat/completions",
+                        {"messages": [{"role": "user", "content": "안녕"}], "temperature": 1e-40, "max_tokens": 3})
+    assert status == 200 and body["usage"]["completion_tokens"] >= 1
+
+
+def test_generation_error_returns_500_or_sse_error(tiny_tok, monkeypatch):
+    """생성 중 예외: 예전엔 연결이 그냥 끊겼고(비스트리밍), 스트리밍은 200 뒤 조용히 잘렸다."""
+    model = make_model(vocab_size=1024, max_seq_len=128)
+    engine = Engine(model, tiny_tok, "tiny")
+    srv = make_server(engine, "127.0.0.1", 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+
+    def boom(*a, **k):
+        raise RuntimeError("probability tensor contains inf")
+        yield  # 생성기로 만든다 (도달하지 않음)
+
+    monkeypatch.setattr(engine, "stream", boom)
+    monkeypatch.setattr(engine, "complete", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("x")))
+    try:
+        req = {"messages": [{"role": "user", "content": "안녕"}], "max_tokens": 3}
+        status, body = post(port, "/v1/chat/completions", req)
+        assert status == 500 and body["error"]["type"] == "server_error"
+        status, _, payload = request(port, "POST", "/v1/chat/completions", {**req, "stream": True})
+        events = sse_events(payload.decode())
+        assert status == 200 and events[-1] == "[DONE]" and any("error" in e for e in events if isinstance(e, dict))
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_max_completion_tokens_and_completion_room(server):
+    status, body = post(server, "/v1/chat/completions", {"messages": [{"role": "user", "content": "안녕"}],
+                                                         "max_completion_tokens": 3, "temperature": 0})
+    assert status == 200 and body["usage"]["completion_tokens"] <= 3
+    # /v1/completions: 긴 프롬프트도 생성할 자리를 남긴다 (예전엔 L-1토큰을 남겨 1토큰만 생성)
+    status, body = post(server, "/v1/completions", {"prompt": "가나다라마바사 " * 400, "max_tokens": 40,
+                                                    "temperature": 0, "stop": None})
+    assert status == 200 and body["usage"]["prompt_tokens"] + 40 <= 256
+
+
+def test_chunked_body_is_refused_with_one_response(server):
+    """chunked 본문을 Content-Length 0으로 읽고, 남은 청크를 다음 요청으로 해석해 응답이 두 개 나갔다."""
+    body = b'{"messages":[{"role":"user","content":"hi"}]}'
+    raw = (b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+           b"Transfer-Encoding: chunked\r\n\r\n" + f"{len(body):x}".encode() + b"\r\n" + body + b"\r\n0\r\n\r\n")
+    with socket.create_connection(("127.0.0.1", server), timeout=10) as s:
+        s.sendall(raw)
+        data = b""
+        while True:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            data += chunk
+    assert data.count(b"HTTP/1.") == 1 and b" 411 " in data.split(b"\r\n")[0]
+
+
+def test_cors_preflight_echoes_requested_headers(server):
+    c = http.client.HTTPConnection("127.0.0.1", server, timeout=10)
+    c.request("OPTIONS", "/v1/chat/completions", headers={
+        "Origin": "http://example.com", "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type, x-stainless-os, x-stainless-lang"})
+    r = c.getresponse()
+    r.read()
+    assert r.status == 204 and "x-stainless-os" in r.getheader("Access-Control-Allow-Headers")
+    c.close()

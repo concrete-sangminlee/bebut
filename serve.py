@@ -23,6 +23,7 @@ base_url만 바꾸면 그대로 붙는다. 프레임워크(FastAPI 등) 없이 h
 
 import argparse
 import json
+import math
 import os
 import threading
 import time
@@ -66,9 +67,11 @@ class Engine:
             if v is None:
                 v = default
             try:
+                if isinstance(v, bool) or not math.isfinite(float(v)):  # 1e400 → inf
+                    raise ValueError
                 v = cast(v)
-            except (TypeError, ValueError):
-                raise BadRequest(f"{key}는 숫자여야 합니다") from None
+            except (TypeError, ValueError, OverflowError):
+                raise BadRequest(f"{key}는 유한한 숫자여야 합니다") from None
             if not lo <= v <= hi:
                 raise BadRequest(f"{key}={v}는 [{lo}, {hi}] 범위를 벗어납니다")
             return v
@@ -79,10 +82,14 @@ class Engine:
             stop = [stop]
         if not (isinstance(stop, list) and all(isinstance(s, str) and s for s in stop)):
             raise BadRequest("stop은 문자열 또는 문자열 목록이어야 합니다")
+        # OpenAI는 max_tokens 대신 max_completion_tokens를 쓰라고 하고, 새 클라이언트는 그것만 보낸다
+        mt_key = "max_completion_tokens" if req.get("max_completion_tokens") is not None else "max_tokens"
+        temperature = num("temperature", 0.7, 0.0, 5.0)
         return dict(
             # 문맥 길이보다 큰 값은 거절하지 않고 맞춘다 — 실제 생성 길이는 남은 문맥이 정한다
-            max_tokens=min(L, num("max_tokens", 256, 1, 1 << 20, int)),
-            temperature=num("temperature", 0.7, 0.0, 5.0),
+            max_tokens=min(L, num(mt_key, 256, 1, 1 << 20, int)),
+            # 아주 작은 온도(1e-40 등)는 logits / T가 inf가 되어 샘플링이 죽는다 — greedy로 본다
+            temperature=0.0 if temperature < 1e-4 else temperature,
             top_p=num("top_p", 0.95, 0.0, 1.0),
             top_k=num("top_k", 0, 0, self.model.cfg.vocab_size, int),
             min_p=num("min_p", 0.0, 0.0, 1.0),
@@ -111,13 +118,16 @@ class Engine:
         L = self.model.cfg.max_seq_len
         return fit_messages(self.tok, clean, max(L // 2, L - max_tokens))
 
-    def text_prompt(self, req):
+    def text_prompt(self, req, max_tokens):
+        """텍스트 완성 프롬프트. 생성할 자리를 chat과 같은 규칙으로 남긴다 — 예전엔 늘 L-1토큰을
+        남겨, 긴 프롬프트면 max_tokens와 무관하게 한 토큰만 생성했다."""
         prompt = req.get("prompt")
         if isinstance(prompt, list) and len(prompt) == 1:
             prompt = prompt[0]
         if not isinstance(prompt, str) or not prompt:
             raise BadRequest("prompt는 비어 있지 않은 문자열이어야 합니다")
-        return self.tok.encode(nfc(prompt))[-(self.model.cfg.max_seq_len - 1):]
+        L = self.model.cfg.max_seq_len
+        return self.tok.encode(nfc(prompt))[-max(L // 2, L - max_tokens):]
 
     # ---------------- 생성 ----------------
 
@@ -203,7 +213,9 @@ def make_handler(engine: Engine, verbose=False):
 
         def _cors(self):
             self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            # 브라우저가 요청한 헤더를 그대로 허락한다 — openai JS SDK는 X-Stainless-* 헤더도 보낸다
+            asked = self.headers.get("Access-Control-Request-Headers")
+            self.send_header("Access-Control-Allow-Headers", asked or "Content-Type, Authorization")
 
         def _sse_start(self):
             self.send_response(200)
@@ -252,6 +264,11 @@ def make_handler(engine: Engine, verbose=False):
         def do_POST(self):
             # 본문은 경로와 무관하게 먼저 읽는다. 안 읽고 응답하면 keep-alive 연결에 남은
             # 본문 바이트가 다음 요청의 첫 줄로 해석된다.
+            if self.headers.get("Transfer-Encoding"):
+                # chunked 본문은 지원하지 않는다. 예전엔 Content-Length 0으로 보고 응답한 뒤, 남은 청크를
+                # 같은 연결의 다음 요청으로 읽어 응답이 두 개 나갔다
+                self.close_connection = True
+                return self._error(411, "Transfer-Encoding은 지원하지 않습니다 — Content-Length를 보내세요")
             try:
                 n = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -271,7 +288,7 @@ def make_handler(engine: Engine, verbose=False):
                 if not isinstance(req.get("stream_options") or {}, dict):
                     raise BadRequest("stream_options는 객체여야 합니다")
                 p = engine.sampling(req)
-                ids = engine.chat_prompt(req, p["max_tokens"]) if chat else engine.text_prompt(req)
+                ids = (engine.chat_prompt if chat else engine.text_prompt)(req, p["max_tokens"])
             except (json.JSONDecodeError, UnicodeDecodeError):
                 return self._error(400, "UTF-8 JSON 형식이 아닙니다")
             except (BadRequest, ValueError) as e:  # ValueError: 프롬프트를 만들 수 없는 요청 (예: 예산 초과)
@@ -310,9 +327,22 @@ def make_handler(engine: Engine, verbose=False):
                     self._sse("[DONE]")
                 except (BrokenPipeError, ConnectionResetError):
                     it.close()  # 클라이언트가 끊으면 생성을 멈추고 락을 푼다
+                except Exception as e:  # 헤더(200)는 이미 나갔다 — 오류 이벤트와 [DONE]으로 알린다
+                    it.close()
+                    print(f"생성 중 오류: {type(e).__name__}: {e}", flush=True)
+                    try:
+                        self._sse({"error": {"message": f"생성 중 오류: {type(e).__name__}",
+                                             "type": "server_error", "code": None}})
+                        self._sse("[DONE]")
+                    except OSError:
+                        pass
                 return
 
-            text, finish, n_out, cached = engine.complete(ids, p, chat)
+            try:
+                text, finish, n_out, cached = engine.complete(ids, p, chat)
+            except Exception as e:  # 예전엔 핸들러가 죽어 응답 없이 연결이 끊겼다
+                print(f"생성 중 오류: {type(e).__name__}: {e}", flush=True)
+                return self._error(500, f"생성 중 오류: {type(e).__name__}", "server_error")
             choice = ({"index": 0, "message": {"role": "assistant", "content": text},
                        "finish_reason": finish} if chat
                       else {"index": 0, "text": text, "finish_reason": finish})
