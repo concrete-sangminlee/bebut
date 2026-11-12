@@ -175,6 +175,10 @@ def test_q8_0_quantizer_edge_cases():
         bound = 0.5 * d16 + 127 * np.abs(d16 - d) + 1e-12  # 반 칸 + 스케일의 fp16 반올림
         assert (np.abs(deq - x).reshape(-1, 32).max(1) <= bound * 1.0001).all()
         assert np.all(deq[0, :32] == 0)
+    # 0.5 바로 아래(0.49999997)는 roundf로 0 — 예전 floor(|v| + 0.5)는 float32 반올림으로 1을 냈다
+    x = np.zeros((1, 32), dtype=np.float32)
+    x[0, 0], x[0, 1] = 127.0, np.nextafter(np.float32(0.5), np.float32(0))
+    assert export_gguf.quantize_q8_0(x) == gguf.quants.quantize(x, gguf.GGMLQuantizationType.Q8_0).tobytes()
 
 
 def test_q8_0_falls_back_for_unaligned_rows(tmp_path, real_tok):
@@ -350,6 +354,10 @@ def test_llama_cpp_special_tokens_and_eog(llama_cpp, exported, real_tok):
     assert not set(plain) & set(real_tok.special_tokens.values())
     assert llm.token_eos() == real_tok.special_tokens["<|im_end|>"]
     assert llm.token_bos() == real_tok.special_tokens["<|bos|>"]
+    # 대화 모드에서도 <|eos|>가 생성 끝이어야 한다 (다른 추론 경로는 둘 다에서 멈춘다)
+    vocab = llama_cpp.llama_model_get_vocab(llm._model.model)
+    for t in ("<|im_end|>", "<|eos|>"):
+        assert llama_cpp.llama_vocab_is_eog(vocab, real_tok.special_tokens[t]), t
 
 
 # ---------------- CLI ----------------

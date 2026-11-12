@@ -134,7 +134,11 @@ def quantize_q8_0(x: np.ndarray) -> bytes:
     d = amax / 127.0
     inv = np.divide(1.0, d, out=np.zeros_like(d), where=d != 0)
     v = x * inv[:, None]
-    q = (np.sign(v) * np.floor(np.abs(v) + 0.5)).astype(np.int8)
+    # floor(|v| + 0.5)는 float32에서 0.49999997 + 0.5가 1.0으로 반올림돼 roundf와 달랐다.
+    # gguf-py와 같은 정확한 식: floor(a) + floor(2·(a − floor(a)))
+    a = np.abs(v)
+    f = np.floor(a)
+    q = (np.sign(v) * (f + np.floor(2 * (a - f)))).astype(np.int8)
     blocks = np.empty(len(x), dtype=[("d", "<f2"), ("qs", "i1", (Q8_BLOCK,))])
     blocks["d"] = d.astype(np.float16)
     blocks["qs"] = q
@@ -241,6 +245,9 @@ def tokenizer_metadata(tok: ByteBPETokenizer, vocab_size: int, chat: bool) -> di
         "tokenizer.ggml.eos_token_id": u32(sp["<|im_end|>" if chat else "<|eos|>"]),
         # 대화 턴 끝 — llama-cli/llama-server가 대화 모드에서 여기서 멈춘다
         "tokenizer.ggml.eot_token_id": u32(sp["<|im_end|>"]),
+        # 문서 끝(<|eos|>)도 생성 끝으로 — 대화 모드에서 eos를 <|im_end|>로 두면 llama.cpp가 <|eos|>를
+        # 생성 끝으로 보지 않아 그 뒤로 계속 생성했다(HF·Modelfile·sample.py·serve.py는 둘 다에서 멈춘다)
+        "tokenizer.ggml.eom_token_id": u32(sp["<|eos|>"]),
         "tokenizer.ggml.padding_token_id": u32(sp["<|pad|>"]),
         "tokenizer.ggml.add_bos_token": boolean(False),  # 학습 때도 bos를 붙이지 않았다
         "tokenizer.ggml.add_eos_token": boolean(False),

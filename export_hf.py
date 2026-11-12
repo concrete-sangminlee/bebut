@@ -32,6 +32,7 @@ import struct
 
 import torch
 
+from sample import load_checkpoint
 from tokenizer.bpe import ByteBPETokenizer
 from tokenizer.pretokenize import GPT4_SPLIT_PATTERN
 
@@ -345,6 +346,11 @@ python convert_hf_to_gguf.py <이 디렉토리> --outfile bebut.gguf
 - 채팅 형식은 `<|im_start|>{{role}}\\n{{content}}<|im_end|>\\n`입니다(내장 chat_template).
   SFT는 user/assistant 단일 턴으로만 학습했습니다.
 - 생성은 `<|im_end|>`(대화) 또는 `<|eos|>`(문서 끝)에서 멈춥니다(generation_config.json).
+- 입력은 NFC로 정규화해서 넣으세요(`unicodedata.normalize("NFC", text)`). 원래 저장소의 대화
+  경로는 메시지를 NFC로 바꾸지만 이 토크나이저는 바이트 단위 그대로라, 맥·PDF에서 온 NFD 한글은
+  5배 넘는 바이트 조각 토큰이 됩니다(학습 때 본 적 없는 형태).
+- assistant 기록이 공백·줄바꿈으로 시작하면, 저장소(SFT)는 `assistant\n`과 내용을 따로 토큰화하지만
+  chat_template은 이어서 토큰화해 경계 토큰이 달라질 수 있습니다(보통의 대화에서는 같습니다).
 - HF 토크나이저는 입력 텍스트 안의 `<|im_start|>` 같은 문자열을 special token으로 해석합니다.
   사용자 입력을 그대로 넣을 때는 `split_special_tokens=True`를 고려하세요.
 - 계산을 못 하고, 드문 사실은 그럴듯하게 지어냅니다. 한계와 평가는 저장소의
@@ -419,8 +425,9 @@ def main():
                     help="eos를 <|im_end|>로 둘지 (기본: SFT·DPO 체크포인트면 켬)")
     args = ap.parse_args()
 
-    # CPU로 읽는다 — 사전학습 체크포인트엔 옵티마이저 상태도 들어 있어 GPU에 올릴 이유가 없다
-    ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    # mmap으로 읽는다 — 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)도 들어 있다.
+    # 예전엔 그것까지 전부 메모리에 올렸다(15GB 기계에서 OOM). export_gguf.py와 같은 함수
+    ckpt = load_checkpoint(args.ckpt)
     conf = importlib.import_module(f"configs.{ckpt['config']}")
     chat = args.chat if args.chat is not None else is_chat_config(ckpt["config"])
     tok = ByteBPETokenizer.load(args.tokenizer)
