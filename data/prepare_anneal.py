@@ -20,6 +20,7 @@ import json
 import os
 import time
 import unicodedata
+from collections import Counter
 from multiprocessing import Pool
 
 
@@ -168,7 +169,8 @@ def run(args):
     for src in SOURCES:
         budget = int(target * src["ratio"])
         streams.append({**src, "budget": budget, "got": 0, "it": build_stream(src), "seen": 0,
-                        "kept": 0, "val_skipped": 0, "kept_once": set(), "exhausted": False})
+                        "kept": 0, "val_skipped": 0, "kept_once": Counter(), "this_pass": (0, Counter()),
+                        "exhausted": False})
 
     deduper = MinHashDeduper()
     train_w = ShardWriter(args.out_dir, "train")
@@ -223,10 +225,15 @@ def run(args):
                         n_dup += 1
                         continue
                     if s["repeat"] > 1:
-                        s["kept_once"].add(sig)
-                elif sig not in s["kept_once"]:  # 2회차부터는 1회차에 채택된 문서만
-                    n_dup += 1
-                    continue
+                        s["kept_once"][sig] += 1
+                else:  # 2회차부터는 1회차에 채택된 문서만, 채택된 횟수까지만 (정확한 사본은 서명이 같다)
+                    if s["this_pass"][0] != pass_idx:
+                        s["this_pass"] = (pass_idx, Counter())
+                    used = s["this_pass"][1]
+                    if used[sig] >= s["kept_once"][sig]:
+                        n_dup += 1
+                        continue
+                    used[sig] += 1
             s["got"] += len(ids)
             s["kept"] += 1
             (val_w if val else train_w).add(ids)

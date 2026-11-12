@@ -103,7 +103,7 @@ def test_prepare_hash_val_reports_exhausted_source_and_refuses_old_shards(tmp_pa
 
 def test_anneal_val_never_reaches_train_and_dedup_repeat_counts(tmp_path, monkeypatch, tok):
     books = [{"text": korean_doc(f"b{i}")} for i in range(40)]
-    namu = [{"text": korean_doc(f"n{i}")} for i in range(40)]
+    namu = [{"text": korean_doc(f"n{i}")} for i in range(40)] + [{"text": korean_doc("n0")}]  # 정확한 사본 하나
     inst = [{"instruction": f"질문{i} " + korean_doc(f"q{i}", 60), "output": f"답{i}"} for i in range(40)]
     rows = {"books": books, "namu": namu, "inst": inst}
     monkeypatch.setattr(A, "SOURCES", [
@@ -122,6 +122,8 @@ def test_anneal_val_never_reaches_train_and_dedup_repeat_counts(tmp_path, monkey
     n_namu_train = sum(1 for d in train if d.startswith("n"))
     n_namu_val = sum(1 for d in val if d.startswith("n"))
     assert n_namu_train == 2 * (40 - n_namu_val)  # 2회 반복이 실제로 2회분 (예전엔 1회분)
+    # 1회차에서 중복으로 버린 사본은 2회차에도 버린다 (서명이 같아 다시 들어오면 안 된다)
+    assert all(train.count(d) <= 2 for d in train if d.startswith("n"))
     assert src["교과서"]["val_skipped"] == 2 * sum(1 for d in val if d.startswith("b"))
     assert all(s["exhausted"] for s in meta["sources"])  # 예산을 못 채웠다
     saved = json.load(open(os.path.join(out, "meta.json"), encoding="utf-8"))
