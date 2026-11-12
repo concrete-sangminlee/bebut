@@ -4,8 +4,8 @@
 SFT 검증 loss에서 그 일을 겪었다(annealing에 SFT 데이터를 넣었기 때문). 여기서는
 벤치마크(KMMLU · HAE-RAE · KOBEST)와 자체 문항을 학습 데이터와 대조한다:
 SFT(KoAlpaca · KULLM v2), annealing 교과서(maywell/korean_textbooks 17개 구성, mmlu_* 포함),
-위키백과(사전학습 10% · annealing 15%), 나무위키(annealing 15%), 사전학습 웹(FineWeb-2 ko
-train 전체, 사전학습 75% · annealing 23%). 영어 FineWeb-Edu만 대상에 없다.
+위키백과(사전학습 1.1% — 260M에서 소진 · annealing 15%), 나무위키(annealing 15%), 사전학습 웹
+(FineWeb-2 ko train 전체, 사전학습 82% · annealing 23%). 영어 FineWeb-Edu만 대상에 없다.
 
 방법 (GPT-3·Llama 2의 n-gram 오염 검사와 같은 계열):
 - 텍스트를 NFKC 정규화 + 소문자로 바꾸고 문자·숫자(한글·한자·라틴·그리스 등)만 남겨
