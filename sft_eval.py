@@ -24,7 +24,7 @@ import time
 import torch
 
 from chat import encode_prompt
-from eval import BENCHMARKS, load_exclude, run_benchmarks
+from eval import BENCHMARKS, load_exclude, run_benchmarks, wilson_ci
 from sample import load_model, pick_device
 
 DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
@@ -102,6 +102,8 @@ def rescore(result, questions, excluded=()):
     held = [ok for t, v in by_type.items() if t != "오염대조" for ok in v]
     n = max(1, len(rows))
     return {"heldout_acc": round(100 * sum(held) / max(1, len(held)), 1), "by_type": acc,
+            # 95% 신뢰구간(%) — 30문항이면 한두 문제 차이는 구간 안이다
+            "heldout_ci95": [round(100 * v, 1) for v in wilson_ci(sum(held), len(held))],
             "n_scored": len(held), "excluded": len(ex),
             "excluded_acc": round(100 * sum(ex) / len(ex), 1) if ex else None,
             "stop_rate": round(100 * sum(r["stopped"] for r in rows) / n, 1),
@@ -147,8 +149,8 @@ def main():
         saved = json.load(open(args.rescore, encoding="utf-8"))
         for label, r in saved.items():
             r.update(rescore(r, questions, excluded_items(exclude, args.questions)))
-            print(f"{label}: 대화 정답률 {r['heldout_acc']}% (채점 {r['n_scored']}문항, 오염 제외 "
-                  f"{r['excluded']}) | 유형별 {r['by_type']}")
+            print(f"{label}: 대화 정답률 {r['heldout_acc']}% (95% 구간 {r['heldout_ci95']}, "
+                  f"채점 {r['n_scored']}문항, 오염 제외 {r['excluded']}) | 유형별 {r['by_type']}")
         json.dump(saved, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"저장: {args.out}")
         return

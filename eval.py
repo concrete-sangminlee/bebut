@@ -192,6 +192,18 @@ def format_hellaswag(row):
 FORMATTERS = {"copa": format_copa, "boolq": format_boolq, "hellaswag": format_hellaswag}
 
 
+def wilson_ci(k: int, n: int, z: float = 1.96) -> list[float]:
+    """정답 k / n의 95% Wilson 신뢰구간 [lo, hi]. 문항이 적을수록 넓다 — 대화 평가 30문항이면
+    70%의 구간이 대략 52~83%라, 한두 문제 차이는 구분되지 않는다."""
+    if n == 0:
+        return [0.0, 1.0]
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
+
+
 def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip=None):
     """다지선다 채점. 세 가지 점수를 한 번에 낸다.
 
@@ -248,6 +260,7 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
         excluded += held_out
         total += not held_out
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
+            "ci95": {n: wilson_ci(correct[n], total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
             "truncated": stats["truncated"], "excluded": excluded, "degenerate": degenerate,
             "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
@@ -311,6 +324,8 @@ def _aggregate(per):
                                    if r.get("excluded")) / ex for k in names} if ex else None}
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
+    out["ci95"] = {k: wilson_ci(round(out[k] * n), n) for k in names}
+    for k in names:
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
     out["by_config"] = {c: {**{k: r[k] for k in ("n", *names, "truncated")},
                            "excluded": r.get("excluded", 0)} for c, r in per.items()}

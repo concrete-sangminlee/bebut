@@ -366,7 +366,11 @@
     "seconds": 383,
     "n_scored": 30,
     "excluded": 1,
-    "excluded_acc": 100.0
+    "excluded_acc": 100.0,
+    "heldout_ci95": [
+      48.8,
+      80.8
+    ]
   },
   "SFT 에폭0": {
     "heldout_acc": 63.3,
@@ -735,7 +739,11 @@
     "seconds": 368,
     "n_scored": 30,
     "excluded": 1,
-    "excluded_acc": 100.0
+    "excluded_acc": 100.0,
+    "heldout_ci95": [
+      45.5,
+      78.1
+    ]
   },
   "SFT 최종": {
     "heldout_acc": 70.0,
@@ -1104,6 +1112,10 @@
     "seconds": 375,
     "n_scored": 30,
     "excluded": 1,
-    "excluded_acc": 100.0
+    "excluded_acc": 100.0,
+    "heldout_ci95": [
+      52.1,
+      83.3
+    ]
   }
 }
