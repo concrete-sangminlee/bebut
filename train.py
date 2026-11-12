@@ -22,6 +22,7 @@ import csv
 import importlib
 import math
 import os
+import shutil
 import time
 
 import torch
@@ -46,16 +47,38 @@ def lr_at(step, cfg):
     return cfg["max_lr"] + frac * (cfg["min_lr"] - cfg["max_lr"])
 
 
+def step_if_finite(opt, loss_val, grad_norm, bad_steps, step):
+    """loss와 grad norm이 유한할 때만 opt.step(). 아니면 업데이트를 건너뛰고 연속 횟수를 센다.
+    MAX_BAD_STEPS번 연속이면 예외 — 가중치를 NaN으로 덮어쓴 채 '완료'로 끝나지 않게.
+    돌려주는 값은 새 연속 횟수. train.py · sft.py · dpo.py가 같이 쓴다."""
+    gn = float(grad_norm)
+    if math.isfinite(loss_val) and math.isfinite(gn):
+        opt.step()
+        return 0
+    bad_steps += 1
+    print(f"경고: step {step} loss {loss_val} / grad norm {gn} — 업데이트 건너뜀 "
+          f"({bad_steps}/{MAX_BAD_STEPS})", flush=True)
+    if bad_steps >= MAX_BAD_STEPS:
+        raise RuntimeError("비정상 step이 연속됐다 — 마지막 체크포인트에서 재개할 것")
+    return bad_steps
+
+
+VAL_WINDOWS = 40  # val loss를 잴 윈도우 수 (batch_size와 무관하게 같은 표본)
+
+
 @torch.no_grad()
 def estimate_val_loss(model, loader, iters, device_type, loss_chunk=None):
-    """매번 **같은** val 배치 iters개로 잰다.
+    """매번 **같은** val 배치 iters개로 잰다. iters=None이면 VAL_WINDOWS개 윈도우가 되게
+    (batch_size를 바꿔 재개해도 epoch 모드의 val 표본이 같다 — 예전엔 20배치 고정이라 달라졌다).
 
     예전에는 val 로더가 호출될 때마다 다음 배치로 넘어가서, 평가마다 다른 8만 토큰을
     쟀다. 그래서 val loss가 100 step 주기로 ±0.1씩 출렁였고, 모델 변화와 표본 노이즈를
     구분할 수 없었다. 처음으로 되감아 같은 표본을 쓰면 값의 차이가 곧 모델의 차이다.
     """
     model.eval()
-    loader.step = 0
+    loader.reset()
+    if iters is None:
+        iters = max(1, VAL_WINDOWS // loader.B)
     losses = []
     for _ in range(iters):
         x, y = loader.next_batch()
@@ -66,17 +89,35 @@ def estimate_val_loss(model, loader, iters, device_type, loss_chunk=None):
     return sum(losses) / len(losses)
 
 
-def open_metrics(path):
+def open_metrics(path, start_step=None):
     """metrics.csv를 이어 쓴다. 예전 형식(열 5개) 파일이면 그 열만 쓴다.
 
     예전 train.py는 start_step == 0일 때만 헤더를 써서, --resume으로 처음 만들어진
     파일엔 헤더가 없다. 첫 줄이 헤더가 아니면 예전 열 순서로 본다.
+
+    step >= start_step인 행은 먼저 지운다. 크래시로 죽으면 마지막 체크포인트 뒤 step의 행이
+    이미 파일에 남아 있고, 재개는 체크포인트 다음 step부터 다시 쓰므로 그 구간이 두 번
+    들어갔다(차트가 뒤로 접혔다). 새로 시작하면(start_step=0) 예전 행을 모두 지운다.
+    start_step=None이면 지우지 않는다.
     """
     fields = METRIC_FIELDS
     if os.path.exists(path) and os.path.getsize(path) > 0:
         with open(path, newline="") as f:
-            first = next(csv.reader(f), [])
-        fields = first if first[:1] == ["step"] else LEGACY_FIELDS
+            rows = list(csv.reader(f))
+        header = rows[0][:1] == ["step"]
+        fields = rows[0] if header else LEGACY_FIELDS
+        body = rows[1:] if header else rows
+        keep = body if start_step is None else [
+            r for r in body if r and r[0].strip().isdigit() and int(r[0]) < start_step]
+        if len(keep) != len(body):
+            tmp = path + ".tmp"
+            with open(tmp, "w", newline="") as f:
+                w = csv.writer(f)
+                if header:
+                    w.writerow(fields)
+                w.writerows(keep)
+            os.replace(tmp, path)
+            print(f"metrics.csv: step {start_step} 이후 행 {len(body) - len(keep)}개를 지우고 이어 씀")
         new = False
     else:
         new = True
@@ -185,7 +226,7 @@ def main():
 
         run = wandb.init(project="bebut", name=args.config, config=tcfg)
 
-    metrics_f, metrics = open_metrics(os.path.join(ckpt_dir, "metrics.csv"))
+    metrics_f, metrics = open_metrics(os.path.join(ckpt_dir, "metrics.csv"), start_step)
 
     tokens_per_step = tcfg["batch_size"] * tcfg["grad_accum"] * mcfg.max_seq_len
     end_step = tcfg["max_steps"] if args.stop_after is None else min(
@@ -216,16 +257,8 @@ def main():
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
         loss_val, gn = loss_acc.item(), grad_norm.item()
 
-        if math.isfinite(loss_val) and math.isfinite(gn):
-            bad_steps = 0
-            opt.step()
-        else:
-            # 한 번의 이상치로 가중치를 망치지 않는다. 데이터는 이미 소비했으니 업데이트만 건너뛴다.
-            bad_steps += 1
-            print(f"경고: step {step} loss {loss_val} / grad norm {gn} — 업데이트 건너뜀 "
-                  f"({bad_steps}/{MAX_BAD_STEPS})", flush=True)
-            if bad_steps >= MAX_BAD_STEPS:
-                raise RuntimeError("비정상 step이 연속됐다 — 마지막 체크포인트에서 재개할 것")
+        # 한 번의 이상치로 가중치를 망치지 않는다. 데이터는 이미 소비했으니 업데이트만 건너뛴다.
+        bad_steps = step_if_finite(opt, loss_val, gn, bad_steps, step)
         opt.zero_grad(set_to_none=True)
 
         tps = ""
@@ -242,7 +275,7 @@ def main():
 
         val_loss = ""
         if step > 0 and step % tcfg["eval_every"] == 0:
-            val_loss = estimate_val_loss(model, val_loader, 20, device_type, tcfg.get("loss_chunk"))
+            val_loss = estimate_val_loss(model, val_loader, None, device_type, tcfg.get("loss_chunk"))
             print(f"step {step:6d} | val loss {val_loss:.4f}")
             # 생성 샘플로 정성 확인
             raw = getattr(model, "_orig_mod", model)
@@ -287,12 +320,24 @@ def main():
             torch.save(ckpt, tmp)
             os.replace(tmp, path)
             metrics_f.flush()
-            print(f"체크포인트 저장: {path} (step {step})", flush=True)
 
             if snapshot:
+                # 스냅샷도 원자적으로. 예전엔 바로 써서, 쓰는 중에 죽으면 잘린 step_N.pt가 남고
+                # (재개는 N+1부터라 다시 안 만들어진다) 마일스톤 평가가 그 파일에서 매번 죽었다.
+                # latest.pt를 하드링크하면 14GB를 두 번 쓰지 않는다 — latest.pt는 다음 저장 때
+                # rename으로 바뀌므로 링크한 내용은 그대로 남는다. 링크가 안 되면 복사.
                 snap = os.path.join(ckpt_dir, f"step_{step:06d}.pt")
-                torch.save(ckpt, snap)
+                snap_tmp = snap + ".tmp"
+                if os.path.exists(snap_tmp):
+                    os.remove(snap_tmp)
+                try:
+                    os.link(path, snap_tmp)
+                except OSError:
+                    shutil.copyfile(path, snap_tmp)
+                os.replace(snap_tmp, snap)
                 print(f"스냅샷 저장: {snap}")
+            # 정지 절차(OPERATIONS.md)가 이 줄을 보고 프로세스를 끈다 — 스냅샷까지 끝난 뒤에 찍는다
+            print(f"체크포인트 저장: {path} (step {step})", flush=True)
 
     metrics_f.close()
     if end_step < tcfg["max_steps"]:

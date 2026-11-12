@@ -14,6 +14,12 @@ if pgrep -f "[t]rain.py --config $CONFIG" > /dev/null; then
   echo "이미 학습이 돌고 있습니다. 중복 실행하지 않습니다."
   exit 1
 fi
+# 감시 스크립트가 재시도 대기 중(sleep)이면 train.py는 없지만 곧 다시 띄운다 — 예전엔 이 경우를
+# 못 보고 감시를 하나 더 띄워, 같은 latest.pt로 train.py 두 개가 돌았다
+if pgrep -f "[r]un_training.sh $CONFIG" > /dev/null; then
+  echo "학습 감시(run_training.sh $CONFIG)가 이미 떠 있습니다 (재시도 대기 중일 수 있음). 중복 실행하지 않습니다."
+  exit 1
+fi
 if [ ! -f "$CKPT" ]; then
   echo "체크포인트가 없습니다: $CKPT"
   exit 1
@@ -42,7 +48,11 @@ fi
 echo "체크포인트 step $step 에서 재개합니다 (다음 step: $((step + 1)), 목표 $max)"
 nohup ./run_training.sh "$CONFIG" "$SHARD_DIR" > supervisor.log 2>&1 &
 sleep 5
-nohup ./watch_milestones.sh > watch_milestones.log 2>&1 &
+if pgrep -f "[w]atch_milestones.sh $CONFIG" > /dev/null; then
+  echo "마일스톤 감시는 이미 떠 있습니다 — 새로 띄우지 않습니다"
+else
+  nohup ./watch_milestones.sh "$CONFIG" > watch_milestones.log 2>&1 &
+fi
 sleep 3
 echo "학습 감시 $(pgrep -fc '[r]un_training.sh')개 / 마일스톤 감시 $(pgrep -fc '[w]atch_milestones')개 기동"
 echo "첫 진행 로그는 torch.compile 워밍업 때문에 20분쯤 뒤에 나옵니다."

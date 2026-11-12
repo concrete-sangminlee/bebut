@@ -32,6 +32,12 @@ def pick_device(name: str = "auto") -> str:
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def device_type_of(device: str) -> str:
+    """'cuda:1' → 'cuda' (autocast·fused AdamW용). 예전 sft.py·dpo.py는 문자열이 정확히 'cuda'일
+    때만 CUDA로 봐서 --device cuda:0이면 autocast 대상이 'mps'가 되어 bf16 없이 fp32로 돌았다."""
+    return torch.device(device).type
+
+
 def load_checkpoint(path):
     """체크포인트를 CPU로 읽는다.
 

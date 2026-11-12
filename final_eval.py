@@ -64,7 +64,7 @@ def main():
                 loader = ShardedDataLoader(vdir, "val", 4, model.cfg.max_seq_len, seed=123,
                                            device=device)
                 ppl, _ = perplexity(model, loader, 50, device_type)
-                loader.step = 0  # 같은 배치로 BPB도
+                loader.reset()  # 같은 배치로 BPB도
                 bpb = bits_per_byte(model, loader, 50, device_type, tok)
                 r["ppl"][vname] = round(ppl, 2)
                 r["bpb"][vname] = round(bpb, 4)

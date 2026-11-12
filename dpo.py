@@ -44,8 +44,9 @@ import torch.nn.functional as F
 
 from chat import encode_prompt
 from model import GPT
-from sample import load_checkpoint, pick_device
+from sample import device_type_of, load_checkpoint, pick_device
 from tokenizer.bpe import ByteBPETokenizer
+from train import step_if_finite
 
 # ---------------- 데이터 ----------------
 
@@ -236,7 +237,7 @@ def main():
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
     device = pick_device(args.device)
-    device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"
+    device_type = device_type_of(device)
     torch.manual_seed(tcfg.get("seed", 1337))
 
     tok = ByteBPETokenizer.load(args.tokenizer)
@@ -252,7 +253,7 @@ def main():
     del ckpt
     policy = policy.to(device)
     opt = torch.optim.AdamW(policy.param_groups(tcfg["weight_decay"]), lr=tcfg["max_lr"],
-                            betas=(0.9, 0.95), fused=(device == "cuda"))
+                            betas=(0.9, 0.95), fused=(device_type == "cuda"))
 
     pad_id = tok.special_tokens["<|pad|>"]
     B, accum = tcfg["batch_size"], tcfg["grad_accum"]
@@ -272,7 +273,7 @@ def main():
     v0 = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
     print(f"시작 val: loss {v0['loss']:.4f} (정책=참조라 ln2={math.log(2):.4f}여야 한다)", flush=True)
 
-    step, t0 = 0, time.time()
+    step, bad, t0 = 0, 0, time.time()
     policy.train()
     for epoch in range(tcfg["epochs"]):
         order = list(range(len(train)))
@@ -295,8 +296,10 @@ def main():
                 agg["loss"] += loss.item() / accum
                 agg["accuracy"] += st["accuracy"] / accum
                 agg["margin"] += st["margin"] / accum
-            torch.nn.utils.clip_grad_norm_(policy.parameters(), tcfg["grad_clip"])
-            opt.step()
+            gn = torch.nn.utils.clip_grad_norm_(policy.parameters(), tcfg["grad_clip"])
+            # 예전엔 검사 없이 opt.step() — NaN 한 번이면 가중치가 전부 NaN이 된 채로 끝까지 돌아
+            # latest.pt를 덮어쓰고 '완료'로 끝났다 (train.py에는 있던 가드)
+            bad = step_if_finite(opt, agg["loss"], gn, bad, step)
             opt.zero_grad(set_to_none=True)
             if step % tcfg.get("log_every", 10) == 0:
                 print(f"epoch {epoch} step {step}/{max_steps} | loss {agg['loss']:.4f} "

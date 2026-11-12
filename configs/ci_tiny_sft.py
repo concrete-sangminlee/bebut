@@ -1,4 +1,4 @@
-"""CI·테스트 전용 SFT 설정 — configs/ci_tiny.py 모델과 짝 (tests/test_sft_e2e.py)."""
+"""CI·테스트 전용 SFT 설정 — configs/ci_tiny.py 모델과 짝 (tests/test_sft.py::test_sft_e2e_saves_epoch_checkpoints)."""
 
 from configs.ci_tiny import model  # noqa: F401 — 아키텍처 재사용 (train.py가 conf.model을 읽는다)
 

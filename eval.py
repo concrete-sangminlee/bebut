@@ -463,7 +463,7 @@ def main():
                                    seed=123, device=device)
         ppl, loss = perplexity(model, loader, 20, device_type)
         print(f"val perplexity: {ppl:.2f} (loss {loss:.4f})")
-        loader.step = 0  # 같은 배치로
+        loader.reset()  # 같은 배치로
         print(f"val bits-per-byte: {bits_per_byte(model, loader, 20, device_type, tok):.4f} "
               "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 
