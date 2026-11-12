@@ -15,6 +15,7 @@
 """
 
 import codecs
+import unicodedata
 
 IM_START, IM_END = "<|im_start|>", "<|im_end|>"
 ROLES = ("system", "user", "assistant")
@@ -26,11 +27,18 @@ def render(messages, add_generation_prompt=True) -> str:
     return s + (f"{IM_START}assistant\n" if add_generation_prompt else "")
 
 
+def nfc(text: str) -> str:
+    """NFC 정규화. 맥 파일 이름·일부 PDF 추출기가 내놓는 NFD 한글(자모 분리)은 학습 데이터에
+    없던 형태라 같은 문장이 15배 넘는 바이트 조각 토큰이 된다(9 → 151토큰). 토크나이저는
+    바이트 단위로 정확해야 하므로(HF·GGUF와 같은 결과) 정규화는 입력 경계에서 한다."""
+    return unicodedata.normalize("NFC", text)
+
+
 def _encode_turn(tok, m, trailing_nl=True):
     """메시지 하나 → (토큰 id, loss mask). 메시지는 앞뒤 메시지와 따로 토큰화된다 — 그래서
     대화 전체의 토큰 수는 턴별 토큰 수의 합이고, fit_messages가 턴을 한 번씩만 인코딩하면 된다."""
     s, e = tok.special_tokens[IM_START], tok.special_tokens[IM_END]
-    role, content = m["role"], m["content"]
+    role, content = m["role"], nfc(m["content"])
     if role not in ROLES:
         raise ValueError(f"알 수 없는 role: {role!r}")
     if role == "assistant":

@@ -19,7 +19,7 @@ import time
 
 import torch
 
-from chat import StreamDecoder, fit_messages
+from chat import StreamDecoder, fit_messages, nfc
 from model import GPT
 from tokenizer.bpe import ByteBPETokenizer
 
@@ -205,7 +205,7 @@ def main():
     if args.chat:
         chat_loop(model, tok, args)
     else:
-        ids = tok.encode(args.prompt)[-(model.cfg.max_seq_len - 1):]
+        ids = tok.encode(nfc(args.prompt))[-(model.cfg.max_seq_len - 1):]
         print(args.prompt, end="", flush=True)
         stream(model, tok, ids, args, [tok.special_tokens["<|eos|>"]])
 

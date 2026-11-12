@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import time
+import unicodedata
 from multiprocessing import Pool
 
 
@@ -84,6 +85,7 @@ def _process(job):
     (2026-08-13에 실제로 발생: 위키 3회 반복이 1회분만 남았다).
     """
     text, threshold, korean, is_instruction, dedup, val_ratio = job
+    text = unicodedata.normalize("NFC", text)  # NFD 한글은 한글 비율 0으로 버려졌다
     val = is_val(text, val_ratio)
     if is_instruction:
         # SFT와 같은 chat 형식으로 넣는다 — 이후 SFT 효과가 좋아진다는 게 최신 관행

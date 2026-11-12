@@ -128,3 +128,13 @@ def test_anneal_val_never_reaches_train_and_dedup_repeat_counts(tmp_path, monkey
     assert all(s["exhausted"] for s in meta["sources"])  # 예산을 못 채웠다
     saved = json.load(open(os.path.join(out, "meta.json"), encoding="utf-8"))
     assert saved["val_split"] == "hash" and set(saved["realized_mix"]) == {"교과서", "나무위키", "instruction"}
+
+
+def test_nfd_document_is_kept_and_encoded_like_nfc(tok):
+    import unicodedata
+
+    P._init_worker(TOK)
+    doc = korean_doc("nfd", 400)
+    keys, ids, _ = P._process_doc((unicodedata.normalize("NFD", doc), True, 0.0))
+    keys2, ids2, _ = P._process_doc((doc, True, 0.0))
+    assert ids is not None and ids == ids2 and keys == keys2  # 예전엔 한글 비율 0으로 버려졌다

@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import torch
 
-from chat import ROLES, StreamDecoder, fit_messages
+from chat import ROLES, StreamDecoder, fit_messages, nfc
 from sample import load_model, pick_device
 
 UI_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "chat.html")
@@ -117,7 +117,7 @@ class Engine:
             prompt = prompt[0]
         if not isinstance(prompt, str) or not prompt:
             raise BadRequest("prompt는 비어 있지 않은 문자열이어야 합니다")
-        return self.tok.encode(prompt)[-(self.model.cfg.max_seq_len - 1):]
+        return self.tok.encode(nfc(prompt))[-(self.model.cfg.max_seq_len - 1):]
 
     # ---------------- 생성 ----------------
 

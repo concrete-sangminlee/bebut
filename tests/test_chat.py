@@ -145,3 +145,14 @@ def test_stream_decoder_never_emits_broken_syllables(real_tok):
     dec = StreamDecoder(real_tok)
     assert "".join(dec.push(b) for b in raw) + dec.flush() == text
     assert dec.push(real_tok.special_tokens["<|im_end|>"]) == ""
+
+
+def test_nfd_hangul_is_normalized_at_the_template(real_tok):
+    """NFD 한글(자모 분리)은 학습 데이터에 없던 형태라 바이트 조각 토큰이 된다(9 → 151토큰)."""
+    import unicodedata
+
+    q = "대한민국은 동아시아의 한반도 남부에 있는 나라이다."
+    nfd = unicodedata.normalize("NFD", q)
+    assert len(real_tok.encode(nfd)) > 10 * len(real_tok.encode(q))
+    assert encode_prompt(real_tok, [{"role": "user", "content": nfd}]) == \
+        encode_prompt(real_tok, [{"role": "user", "content": q}])

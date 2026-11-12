@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import time
+import unicodedata
 from multiprocessing import Pool
 
 import numpy as np
@@ -56,6 +57,7 @@ def _process_doc(job):
     비싼 연산(해싱·인코딩)은 전부 여기서 병렬로 끝낸다.
     """
     text, korean, val_ratio = job
+    text = unicodedata.normalize("NFC", text)  # NFD 한글은 한글 비율 0으로 버려졌다
     if not keep_document(text, korean_source=korean):
         return None, None, False
     keys = _deduper.band_keys(text[:2000])
