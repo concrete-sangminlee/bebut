@@ -1,0 +1,43 @@
+{
+ "note": "data.prepare · data.prepare_anneal의 val 선택(처음 나온 문서 N토큰)을 저장소 함수 그대로 다시 실행해 출처별 val 구성과 그 val 문서가 annealing train에 다시 들어갔는지 계산한 결과. 두 val의 총 토큰 수가 meta.json과 정확히 같다(재현 검증).",
+ "script": "main 1fb489a(5차 수정 이전)의 data/prepare.py · data/prepare_anneal.py 함수로 실행 — 지금 코드는 val을 해시로 고르고 반복 필터도 바뀌어 같은 결과를 재현하지 않는다",
+ "anneal_val": {
+  "total": 20803649,
+  "by_source": {
+   "교과서": 2518142,
+   "위키백과": 6162208,
+   "영어 Edu": 4590031,
+   "instruction": 558567,
+   "나무위키": 6806257,
+   "선별 웹": 168444
+  },
+  "last_index": {
+   "교과서": 4028,
+   "위키백과": 4028,
+   "영어 Edu": 4027,
+   "instruction": 4027,
+   "나무위키": 4025,
+   "선별 웹": 4026
+  }
+ },
+ "pretrain_val": {
+  "total": 130012036,
+  "by_source": {
+   "HuggingFaceFW/fineweb-2/kor_Hang": 28856180,
+   "wikimedia/wikipedia/20231101.ko": 46997374,
+   "HuggingFaceFW/fineweb-edu/sample-10BT": 54158482
+  },
+  "retrained_in_anneal": {
+   "wikimedia/wikipedia/20231101.ko": 46997374,
+   "HuggingFaceFW/fineweb-edu/sample-10BT": 49568451,
+   "HuggingFaceFW/fineweb-2/kor_Hang": 2314400
+  },
+  "rounds": {
+   "HuggingFaceFW/fineweb-2/kor_Hang": 46911,
+   "wikimedia/wikipedia/20231101.ko": 46910,
+   "HuggingFaceFW/fineweb-edu/sample-10BT": 46910
+  }
+ },
+ "annealing_val_in_train_share": 0.4441,
+ "pretrain_val_in_anneal_train_share": 0.7605
+}

@@ -19,7 +19,7 @@ import time
 
 import torch
 
-from chat import StreamDecoder, fit_messages
+from chat import StreamDecoder, fit_messages, nfc
 from model import GPT
 from tokenizer.bpe import ByteBPETokenizer
 
@@ -32,18 +32,37 @@ def pick_device(name: str = "auto") -> str:
     return "mps" if torch.backends.mps.is_available() else "cpu"
 
 
+def device_type_of(device: str) -> str:
+    """'cuda:1' → 'cuda' (autocast·fused AdamW용). 예전 sft.py·dpo.py는 문자열이 정확히 'cuda'일
+    때만 CUDA로 봐서 --device cuda:0이면 autocast 대상이 'mps'가 되어 bf16 없이 fp32로 돌았다."""
+    return torch.device(device).type
+
+
 def load_checkpoint(path):
     """체크포인트를 CPU로 읽는다.
 
     weights_only=True(텐서·기본 자료형만 허용)로 먼저 시도한다 — 임의 코드를 실행할 수
     있는 pickle을 피하는 안전한 방식이다. 우리 체크포인트는 전부 여기에 해당하지만,
     예외적인 파일이면 경고 후 기존 방식으로 읽는다(직접 만든 파일만 열 것).
+
+    mmap=True로 연다: 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)가 들어 있는데,
+    예전엔 그것까지 전부 메모리에 올라갔다(14GB 체크포인트 + 모델 사본 → 약 19GB, 15GB 기계에서
+    추론 불가). mmap이면 load_state_dict가 실제로 읽는 가중치만 페이지로 올라온다.
+    zip 형식이 아닌 아주 오래된 파일은 mmap을 못 써서 예전 방식으로 읽는다.
     """
+    def load(weights_only):
+        try:
+            return torch.load(path, map_location="cpu", weights_only=weights_only, mmap=True)
+        except RuntimeError as e:
+            if "mmap" not in str(e):
+                raise
+            return torch.load(path, map_location="cpu", weights_only=weights_only)
+
     try:
-        return torch.load(path, map_location="cpu", weights_only=True)
+        return load(True)
     except pickle.UnpicklingError:
         print(f"경고: {path}를 weights_only=False로 읽습니다 (신뢰하는 파일만)", file=sys.stderr)
-        return torch.load(path, map_location="cpu", weights_only=False)
+        return load(False)
 
 
 def cpu_has_fast_bf16() -> bool:
@@ -186,7 +205,7 @@ def main():
     if args.chat:
         chat_loop(model, tok, args)
     else:
-        ids = tok.encode(args.prompt)[-(model.cfg.max_seq_len - 1):]
+        ids = tok.encode(nfc(args.prompt))[-(model.cfg.max_seq_len - 1):]
         print(args.prompt, end="", flush=True)
         stream(model, tok, ids, args, [tok.special_tokens["<|eos|>"]])
 

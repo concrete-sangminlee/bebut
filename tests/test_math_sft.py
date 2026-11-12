@@ -93,3 +93,30 @@ def test_heldout_path_does_not_depend_on_cwd(tmp_path, monkeypatch):
     assert len(heldout_pairs()) == 5
     with pytest.raises(FileNotFoundError):  # 파일이 없으면 조용히 제외 목록을 비우지 않는다
         heldout_pairs(str(tmp_path / "없음.json"))
+
+
+def test_keyword_match_respects_number_boundaries_and_question_echo():
+    """예전 채점의 오답 → 정답 사례: 숫자+단위 키가 더 큰 수 안에서 걸렸고, 질문의 보기 목록을
+    따라 쓴 답이 그 안의 키워드로 정답이 됐다(커밋된 SFT 결과에서 세 모델 모두)."""
+    assert not correct("사과 13개가 남았어요.", ["3개", "세 개"])
+    assert correct("사과 3개가 남았어요.", ["3개", "세 개"])
+    assert not correct("국회의원의 임기는 14년입니다.", ["4년"])
+    q = "'가지, 바나나, 사과' 중에서 과일이 아닌 것은?"
+    assert not correct("'가지, 바나나, 사과' 중에서 과일이 아닌 것은 '사과'입니다.", ["가지"], question=q)
+    assert correct("과일이 아닌 것은 가지입니다.", ["가지"], question=q)
+
+
+def test_rescore_reproduces_committed_results():
+    """logs/sft_eval.json은 지금 채점 규칙(오염 문항 제외)으로 다시 채점한 결과다."""
+    import json
+
+    from eval import load_exclude
+    from sft_eval import excluded_items, rescore
+
+    qs = json.load(open("evals/heldout_ko.json", encoding="utf-8"))
+    saved = json.load(open("logs/sft_eval.json", encoding="utf-8"))
+    ex = excluded_items(load_exclude("evals/contaminated_ids.json"), "evals/heldout_ko.json")
+    assert ex == {1}
+    for r in saved.values():
+        again = rescore({"answers": [dict(a) for a in r["answers"]]}, qs, ex)
+        assert again["heldout_acc"] == r["heldout_acc"] and again["excluded"] == 1

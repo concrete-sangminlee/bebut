@@ -22,6 +22,8 @@
 
 ![학습 곡선](docs/training_curves.png)
 
+<sub>사전학습 loss(step 19,200까지)와 마일스톤 평가(step 20,000까지). annealing 구간은 로그가 없어 빠졌고, KOBEST는 채점 버그 이전 † 값입니다.</sub>
+
 ## 결과 요약
 
 > **⚠️ KOBEST 수치 정정 필요 (2026-11).** 아래 KOBEST 점수(†)는 **선택지의 첫 토큰을
@@ -37,22 +39,23 @@
 
 | | 125M (2.6B 토큰) | **1.2B (25.2B 토큰)** | 무작위 |
 |---|---|---|---|
-| held-out perplexity | 34.0 | **13.87** | — |
+| val perplexity ‡ | 34.0 | **13.87** | — |
 | KOBEST COPA † | 48.3% | **67.1%** | 50% |
 | KOBEST HellaSwag † | 28.3% | **40.0%** | 25% |
 | KOBEST BoolQ † | 49.3% | 50.0% | 50% |
 
-**SFT 후 (학습 데이터와 겹치지 않는 자체 문항 36개 + KOBEST 전체)**
+**SFT 후 (SFT 데이터와 겹치지 않는 자체 문항 + KOBEST 전체)**
 
 | | 대화 정답률 | 스스로 멈춤 | 반복 루프 | COPA † | HellaSwag † |
 |---|---|---|---|---|---|
-| 베이스 | 71.0% | 92% | 11% | 67.1% | 40.0% |
-| SFT 에폭0 | 67.7% | 100% | 3% | 66.9% | 40.8% |
-| **SFT 최종** | **74.2%** | 97% | 8% | 66.4% | 40.8% |
+| 베이스 | 66.7% | 92% | 11% | 67.1% | 40.0% |
+| SFT 에폭0 | 63.3% | 100% | 3% | 66.9% | 40.8% |
+| **SFT 최종** | **70.0%** | 97% | 8% | 66.4% | 40.8% |
 
 † 첫 토큰 누락 버그가 있는 채점기로 측정 — 재측정 전까지 참고값입니다.
+‡ 1.2B 값은 held-out이 아닙니다. val 문서의 76%(위키·영어 Edu)를 annealing이 다시 학습했습니다. 완전한 held-out은 annealing 직전의 18.84까지입니다([RESULTS §2 정정](docs/RESULTS.md#2-annealing-효과-전체-문항-gpu-같은-조건--kobest-)).
 
-유형별로는 **사실 100%, 지시 50%, 계산 0%**입니다. 자세한 수치와 해석은
+유형별로는 **사실 100%, 지시 33%, 계산 0%**입니다. 자세한 수치와 해석은
 [docs/RESULTS.md](docs/RESULTS.md), 모델별 답변 전문은
 [logs/sft_eval_answers.md](logs/sft_eval_answers.md)에 있습니다.
 
@@ -93,7 +96,10 @@ cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). fp32에선 출력이
+(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). 기록이 문맥 창을 채운
+뒤에는 오래된 턴을 user 턴 경계에서, 창의 1/4 단위로 묶어 버립니다. 그래서 자르는 자리가 몇
+턴씩 유지되고 그동안 캐시가 계속 재사용됩니다(80턴 모의 대화에서 창이 찬 뒤 턴당 새로 계산하는
+토큰 1,720 → 276). fp32에선 출력이
 캐시 없이 생성한 것과 토큰 단위로 같습니다. bf16(CUDA·bf16 지원 CPU의 기본)에선 반올림 차이로 드물게 달라질 수
 있어, 완전한 재현이 필요하면 `--no-prefix-cache`로 끕니다.
 
@@ -215,7 +221,7 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 ./watch_milestones.sh &                          # 스냅샷 생길 때마다 자동 평가
 
 # 5) 평가 — perplexity·BPB + KOBEST + KMMLU(5-shot) + HAE-RAE (오염 문항 제외)
-python final_eval.py --exclude-ids evals/contaminated_ids.json
+python final_eval.py --exclude-ids evals/contaminated_ids.json   # → logs/final_eval_v2.json
 python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
 # 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
@@ -268,9 +274,10 @@ logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 RTX 6000 Ada 48GB **한 장**으로 전부 했습니다. 벤치마크로 고른 설정은
 마이크로배치 2 × 2048토큰(26GB)이며, 처리량은 11K tok/s였습니다.
 
-배치를 4로 키우면 34.7K tok/s가 나왔지만 VRAM이 34.7GB로 늘어, 같은 GPU를 쓰는
-다른 작업(vLLM 등)이 뜰 때마다 OOM으로 죽었습니다. **공유 자원에서는 최적값보다
-완주 가능성이 중요**하다는 판단으로 배치 2를 택했고, 결과적으로 실제 처리량도 더 좋았습니다.
+벤치마크(`bench.py`, compile 없이)에서 배치 4는 10.3K tok/s로 배치 2(6.8K)보다 40% 빨랐지만
+VRAM이 34.7GB로 늘어, 같은 GPU를 쓰는 다른 작업(vLLM 등)이 뜰 때마다 OOM으로 죽었습니다.
+**공유 자원에서는 최적값보다 완주 가능성이 중요**하다는 판단으로 배치 2를 택했고, 실제
+학습에서는 torch.compile 덕에 배치 2로도 10~11K tok/s가 나와 벤치마크의 배치 4와 비슷했습니다.
 
 ## 한계
 
@@ -279,7 +286,7 @@ RTX 6000 Ada 48GB **한 장**으로 전부 했습니다. 벤치마크로 고른 
 - **드문 사실은 지어냅니다** — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.
 - **BoolQ는 미확인** — 전 구간 무작위 수준·한쪽 쏠림으로 기록했지만, 이는 채점 버그
   (`"예"`의 채점 토큰 0개)로 설명됩니다. 고친 채점기로 재측정해야 실제 능력을 알 수 있습니다.
-- **annealing의 부작용(재확인 필요)** — 고품질 데이터 전환으로 perplexity는 26% 좋아졌지만
+- **annealing의 부작용(재확인 필요)** — 고품질 데이터 전환으로 perplexity는 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가 — RESULTS §2)
   HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 웹의 서사 텍스트를 너무 줄인 탓으로 봤지만,
   이 비교도 버그 있는 채점기로 잰 값이라 재측정 후에 결론을 내려야 합니다.
 - **SFT 데이터 오염** — annealing에 SFT와 같은 데이터를 넣어 SFT 검증 loss가

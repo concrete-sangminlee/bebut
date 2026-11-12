@@ -4,8 +4,8 @@
 SFT 검증 loss에서 그 일을 겪었다(annealing에 SFT 데이터를 넣었기 때문). 여기서는
 벤치마크(KMMLU · HAE-RAE · KOBEST)와 자체 문항을 학습 데이터와 대조한다:
 SFT(KoAlpaca · KULLM v2), annealing 교과서(maywell/korean_textbooks 17개 구성, mmlu_* 포함),
-위키백과(사전학습 10% · annealing 15%), 나무위키(annealing 15%), 사전학습 웹(FineWeb-2 ko
-train 전체, 사전학습 75% · annealing 23%). 영어 FineWeb-Edu만 대상에 없다.
+위키백과(사전학습 1.1% — 260M에서 소진 · annealing 15%), 나무위키(annealing 15%), 사전학습 웹
+(FineWeb-2 ko train 전체, 사전학습 82% · annealing 23%). 영어 FineWeb-Edu만 대상에 없다.
 
 방법 (GPT-3·Llama 2의 n-gram 오염 검사와 같은 계열):
 - 텍스트를 NFKC 정규화 + 소문자로 바꾸고 문자·숫자(한글·한자·라틴·그리스 등)만 남겨
@@ -135,7 +135,7 @@ def follows(option: str, win: str) -> bool:
     return False
 
 
-# ---------------- 평가 세트: (평가 세트, id, 표기 목록[, (정답, 보기들)]) ----------------
+# ---------------- 평가 세트: (평가 세트, id, 표기 목록[, (정답, 보기들)[, 정답에만 있는 단어]]) ----------------
 # id 형식은 eval.py의 --exclude-ids와 같다: <벤치마크>/<설정>/<test 인덱스>
 # 표기 목록: [[필드, ...], ...] — 가장 많이 겹친 표기로 판정한다. 문자열 하나도 받는다.
 # (정답, 보기들)이 있으면 선다형 — 줄기 뒤에 정답이 이어 나와야 오염이다.
@@ -148,6 +148,15 @@ def copa_forms(row) -> list[list[str]]:
     if row["question"] == "원인":  # 전제가 결과, 답이 원인
         return [[f"{p} 왜냐하면 {a}"], [f"{p} {a}"], [f"{a} 그래서 {p}"], [f"{a} {p}"]]
     return [[f"{p} 그래서 {a}"], [f"{p} {a}"]]
+
+
+def copa_must(row):
+    """정답에만 있는 단어. '여자는 머리를 잘랐다' / '여자는 머리를 길렀다'처럼 두 답이 앞부분을
+    공유하면, 전제 + 오답만 있는 글도 키의 절반을 채워 오염으로 잡혔다. 겹친 키 중 하나는
+    이 단어를 담아야 오염이다."""
+    right = set(words(row[f"alternative_{row['label'] + 1}"]))
+    wrong = set(words(row[f"alternative_{2 - row['label']}"]))
+    return frozenset(right - wrong) or None
 
 
 def iter_evals(names):
@@ -172,7 +181,7 @@ def iter_evals(names):
             for i, r in enumerate(load_dataset("skt/kobest_v1", name, split="test")):
                 item_id = f"kobest/{name}/{i}"
                 if name == "copa":
-                    yield name, item_id, copa_forms(r)
+                    yield name, item_id, copa_forms(r), None, copa_must(r)
                 elif name == "boolq":  # 질문이 문항, 지문은 위키백과 문단이라 노출만 따로 잰다
                     yield name, item_id, r["question"]
                     yield "boolq_passage", item_id, r["paragraph"]
@@ -267,13 +276,13 @@ def build_index(eval_items):
             forms = [[forms]]
         fk = [form_keys(f) for f in forms]
         text = " / ".join(forms[0])
-        cidx = None
+        cidx, must = None, (item[4] if len(item) > 4 else None)
         if len(item) > 3 and item[3] is not None:  # 선다형은 표기가 하나다
             cidx = len(choices)
             choices.append((*choice_check(text, *item[3]), len(fk[0])))
             for g in dict.fromkeys(g for ks in fk for g in ks):
                 key_items.setdefault(g, []).append(cidx)
-        per_item[(bench, item_id)] = (text, fk, cidx)
+        per_item[(bench, item_id)] = (text, fk, cidx, must)
         for g in (g for ks in fk for g in ks):
             keys.setdefault(g.count(" ") + 1, set()).add(g)
     return per_item, {"keys": keys, "key_items": {g: tuple(v) for g, v in key_items.items()},
@@ -408,7 +417,7 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
     sources(겹친 문항 수, 근거 출처별). 목록은 겹침 큰 순서로 limit개.
     """
     out, ids = {}, []
-    for (bench, item_id), (text, fk, cidx) in per_item.items():
+    for (bench, item_id), (text, fk, cidx, must) in per_item.items():
         r = out.setdefault(bench, {"items": 0, "checkable": 0, "any_match": 0, "flagged": 0,
                                    "contaminated": 0, "unverifiable": 0, "examples": [], "question_only": [],
                                    "partial": [], "sources": {}})
@@ -431,7 +440,8 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
             r["partial"].append(entry)
             continue
         r["flagged"] += 1
-        ok = True
+        # 정답에만 있는 단어가 겹친 키에 하나도 없으면 오답 쪽 글이다 (COPA)
+        ok = not must or any(must & set(g.split()) for g in hits)
         if cidx is not None:
             ans, others, _ = index["choices"][cidx]
             if not ans and len(others) < 2:
@@ -439,7 +449,7 @@ def report(per_item, index, found, verified, threshold=0.5, examples=5, limit=50
                 entry["unverifiable"] = True
             v = verified.get(cidx)
             # 정답이 이어 나오거나, 다른 보기 2개 이상이 (3개까지) 전부 이어 나오면 같은 문항이다
-            ok = v is not None and (v[2] or len(others) >= 2 and v[3] >= min(3, len(others)))
+            ok = ok and v is not None and (v[2] or len(others) >= 2 and v[3] >= min(3, len(others)))
             if v is not None:
                 entry.update(evidence=f"{v[0]}#{v[1]}", answer_follows=v[2], options_follow=v[3],
                              occurrence_overlap=v[4])

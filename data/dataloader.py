@@ -13,8 +13,11 @@ random은 간단하지만 복원추출이라 같은 구간을 여러 번 뽑고 
 모든 토큰을 정확히 한 번씩 target으로 쓴다. 에폭마다 윈도우 경계도 무작위로 밀어서
 같은 문맥 절단이 반복되지 않게 한다.
 
-재개(resume)가 공짜인 이유: 두 모드 모두 무작위성이 (seed, step)만으로 결정되므로
-체크포인트에 step 수만 저장하면 중단 지점의 데이터 순서를 정확히 재현한다.
+재개(resume)가 공짜인 이유: 무작위성이 seed와 위치만으로 결정되므로 체크포인트에 그것만
+저장하면 중단 지점의 데이터 순서를 정확히 재현한다. random 모드의 위치는 step(배치 수),
+epoch 모드의 위치는 pos(지금까지 꺼낸 윈도우 수)다. 예전엔 epoch 모드도 step만 저장해
+윈도우 위치를 step × batch_size로 계산했다 — batch_size를 바꿔 재개하면(configs/base_1b.py가
+권하는 조작) 이미 본 윈도우를 다시 읽거나 안 본 윈도우를 통째로 건너뛰었다.
 """
 
 import glob
@@ -40,19 +43,27 @@ class ShardedDataLoader:
         assert self.total > 2 * (self.T + 1), f"{shard_dir}/{split}: 토큰 {self.total}개로는 부족"
         self.seed = seed
         self.step = 0
+        self.pos = 0  # epoch 모드: 지금까지 꺼낸 윈도우 수
         self.device = device
         self.mode = mode
         self._perm_epoch, self._perm, self._shift = None, None, 0
 
     def state_dict(self):
-        return {"step": self.step, "seed": self.seed, "mode": self.mode}
+        return {"step": self.step, "seed": self.seed, "mode": self.mode, "pos": self.pos,
+                "batch_size": self.B}
 
     def load_state_dict(self, state):
         self.step = state["step"]
         self.seed = state["seed"]
         # mode가 없는 상태 = 이 키가 생기기 전 체크포인트 → 그때 방식(random) 그대로 이어간다
         self.mode = state.get("mode", "random")
+        # pos가 없는 체크포인트는 당시 batch_size로 위치를 복원한다 (그것도 없으면 지금 값)
+        self.pos = state.get("pos", self.step * state.get("batch_size", self.B))
         self._perm_epoch = None  # seed가 바뀌었을 수 있으니 에폭 순열 캐시를 버린다
+
+    def reset(self):
+        """처음 위치로 되감는다 (고정 val 배치용)."""
+        self.step = self.pos = 0
 
     # ---------------- 윈도우 선택 ----------------
 
@@ -70,21 +81,22 @@ class ShardedDataLoader:
     def windows_per_epoch(self) -> int:
         return (self.total - self.T) // self.T  # shift ≤ T-1이어도 끝이 total을 넘지 않는다
 
-    def _starts(self, step: int) -> np.ndarray:
+    def _starts(self) -> np.ndarray:
         if self.mode == "random":
-            rng = np.random.default_rng((self.seed, step))
+            rng = np.random.default_rng((self.seed, self.step))
             return rng.integers(0, self.total - self.T - 1, size=self.B)
         n = self.windows_per_epoch()
         out = np.empty(self.B, dtype=np.int64)
         for i in range(self.B):  # 배치가 에폭 경계에 걸칠 수 있어 원소별로 계산
-            k = step * self.B + i
+            k = self.pos + i
             shift, perm = self._epoch_layout(k // n)
             out[i] = shift + perm[k % n] * self.T
         return out
 
     def next_batch(self):
-        starts = self._starts(self.step)
+        starts = self._starts()
         self.step += 1
+        self.pos += self.B
         xs = np.empty((self.B, self.T + 1), dtype=np.int64)
         for i, start in enumerate(starts):
             xs[i] = self._read(int(start), self.T + 1)

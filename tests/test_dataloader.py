@@ -37,7 +37,11 @@ def test_epoch_mode_covers_every_target_once(tmp_path):
     dl = ShardedDataLoader(str(tmp_path), "train", B, T, seed=1, mode="epoch")
     n = dl.windows_per_epoch()
     shift, _ = dl._epoch_layout(0)
-    starts = np.concatenate([dl._starts(s) for s in range((n + B - 1) // B)])[:n]
+    starts = []
+    for _ in range((n + B - 1) // B):
+        starts.append(dl._starts())
+        dl.pos += B
+    starts = np.concatenate(starts)[:n]
     assert len(set(starts.tolist())) == n  # 한 에폭 안에 중복 없음
     targets = np.concatenate([np.arange(s + 1, s + T + 1) for s in starts])
     assert len(set(targets.tolist())) == n * T  # target 위치가 겹치지 않는다
@@ -56,3 +60,30 @@ def test_epoch_mode_is_deterministic_and_resumable(tmp_path):
     # 에폭마다 순서가 다르다
     n_steps = a.windows_per_epoch() // 4
     assert not all((ref[i] == ref[i + n_steps]).all() for i in range(3))
+
+
+def test_epoch_resume_with_different_batch_size_sees_every_window_once(tmp_path):
+    """batch_size를 바꿔 재개해도(configs/base_1b.py가 권하는 조작) 한 에폭의 윈도우를 정확히
+    한 번씩 본다. 예전엔 위치를 step × 새 batch_size로 계산해 건너뛰거나 되감았다."""
+    write_shards(tmp_path, "train", [4000])
+    T = 16
+    for b1, b2 in ((2, 4), (4, 2), (3, 5)):
+        a = ShardedDataLoader(str(tmp_path), "train", b1, T, mode="epoch")
+        n = a.windows_per_epoch()
+        seen = [a.next_batch()[1][:, 0].tolist() for _ in range(7)]  # 첫 target 토큰 위치 대신 내용
+        state = a.state_dict()
+        b = ShardedDataLoader(str(tmp_path), "train", b2, T, mode="epoch")
+        b.load_state_dict(state)
+        starts = [s for batch in seen for s in batch]
+        rest = []
+        while len(starts) + len(rest) < n:
+            rest += b._starts().tolist()
+            b.next_batch()
+        layout_shift, perm = b._epoch_layout(0)
+        expected = [layout_shift + int(w) * T for w in perm[:n]]
+        got = [layout_shift + int(w) * T for w in perm[: 7 * b1]] + rest
+        assert got[:n] == expected  # 이어지는 자리가 정확히 다음 윈도우
+    # pos가 없던 예전 체크포인트: 당시 batch_size로 위치를 복원한다
+    c = ShardedDataLoader(str(tmp_path), "train", 4, T, mode="epoch")
+    c.load_state_dict({"step": 10, "seed": 42, "mode": "epoch", "batch_size": 2})
+    assert c.pos == 20

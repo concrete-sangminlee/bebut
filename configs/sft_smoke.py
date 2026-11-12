@@ -12,7 +12,6 @@ train = dict(
     weight_decay=0.0,
     grad_clip=1.0,
     loss_chunk=8192,       # 청크 CE — 64K vocab logits 메모리 절감
-    eval_every=100,
     save_every=100,
     max_len=256,
 )

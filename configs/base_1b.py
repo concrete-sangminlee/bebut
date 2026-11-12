@@ -33,7 +33,8 @@ train = dict(
     max_lr=3e-4,
     min_lr=3e-5,
     warmup_steps=2000,
-    max_steps=24000,         # ≈ 25.2B tokens (step당 약 154초, 총 43일)
+    max_steps=24000,         # ≈ 25.2B tokens. 계획 때 추정은 step당 154초·43일(6.8K tok/s 기준)이었고,
+                             # torch.compile로 실제는 10~11K tok/s → step당 약 100초, 약 4주
     weight_decay=0.1,
     grad_clip=1.0,
     loss_chunk=8192,

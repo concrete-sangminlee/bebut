@@ -31,8 +31,9 @@ import torch
 
 from chat import encode_messages, instruction_to_messages
 from model import GPT
-from sample import load_checkpoint, pick_device
+from sample import device_type_of, load_checkpoint, pick_device
 from tokenizer.bpe import ByteBPETokenizer
+from train import step_if_finite
 
 DATASETS = [
     # (HF dataset, instruction 필드, input 필드, output 필드)
@@ -181,7 +182,7 @@ def main():
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
     device = pick_device(args.device)
-    device_type = "cuda" if device == "cuda" else "cpu" if device == "cpu" else "mps"
+    device_type = device_type_of(device)
 
     tok = ByteBPETokenizer.load(args.tokenizer)
     examples = build_examples(tok, tcfg["max_len"], args.limit, args.data)
@@ -204,7 +205,7 @@ def main():
     del ckpt
     model = model.to(device)
     opt = torch.optim.AdamW(model.param_groups(tcfg["weight_decay"]),
-                            lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device == "cuda"))
+                            lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device_type == "cuda"))
 
     ckpt_dir = os.path.join(args.out_dir, args.config)
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -215,13 +216,17 @@ def main():
     steps_per_epoch = len(make_batches(train_ex, B, 1000, group)) // accum
     max_steps = steps_per_epoch * tcfg["epochs"]
     assert max_steps > 0, "데이터가 배치 하나 분량도 안 된다"
-    print(f"총 {max_steps} steps ({tcfg['epochs']} epochs) | 길이별 묶음 {'켬' if group else '끔'}")
+    # warmup은 절대 step 수(sft_1b: 50)라, 작은 데이터(--data my_chats.jsonl)에서는 전체 step보다
+    # 길어져 학습률이 max_lr에 닿지도 못하고 decay도 없이 끝났다. 전체의 10%로 자른다.
+    warmup = min(tcfg["warmup_steps"], max(1, max_steps // 10))
+    print(f"총 {max_steps} steps ({tcfg['epochs']} epochs, warmup {warmup}) | "
+          f"길이별 묶음 {'켬' if group else '끔'}")
 
     vl0 = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
     print(f"SFT 전 val loss (베이스 모델): {vl0:.4f}", flush=True)
 
     model.train()
-    step = 0
+    step = bad = 0
     t0 = time.time()
     for epoch in range(tcfg["epochs"]):
         batches = make_batches(train_ex, B, seed=1000 + epoch, group_by_length=group)
@@ -229,10 +234,10 @@ def main():
               f"(실제 토큰 / 패딩 포함 토큰)", flush=True)
         for step_in_epoch in range(steps_per_epoch):
             # linear warmup → cosine decay
-            if step < tcfg["warmup_steps"]:
-                lr = tcfg["max_lr"] * (step + 1) / tcfg["warmup_steps"]
+            if step < warmup:
+                lr = tcfg["max_lr"] * (step + 1) / warmup
             else:
-                frac = (step - tcfg["warmup_steps"]) / max(1, max_steps - tcfg["warmup_steps"])
+                frac = (step - warmup) / max(1, max_steps - warmup)
                 lr = tcfg["min_lr"] + 0.5 * (tcfg["max_lr"] - tcfg["min_lr"]) * (1 + math.cos(math.pi * frac))
             for g in opt.param_groups:
                 g["lr"] = lr
@@ -249,8 +254,10 @@ def main():
                 w = int((y != -100).sum()) / max(1, n_tok)
                 (loss * w).backward()
                 loss_acc += loss.item() * w
-            torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
-            opt.step()
+            gn = torch.nn.utils.clip_grad_norm_(model.parameters(), tcfg["grad_clip"])
+            # 예전엔 검사 없이 opt.step() — NaN 한 번이면 가중치가 전부 NaN이 된 채로 끝까지 돌아
+            # latest.pt를 덮어쓰고 '완료'로 끝났다 (train.py에는 있던 가드)
+            bad = step_if_finite(opt, loss_acc, gn, bad, step)
             opt.zero_grad(set_to_none=True)
 
             if step % 10 == 0:

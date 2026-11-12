@@ -192,6 +192,18 @@ def format_hellaswag(row):
 FORMATTERS = {"copa": format_copa, "boolq": format_boolq, "hellaswag": format_hellaswag}
 
 
+def wilson_ci(k: int, n: int, z: float = 1.96) -> list[float]:
+    """정답 k / n의 95% Wilson 신뢰구간 [lo, hi]. 문항이 적을수록 넓다 — 대화 평가 30문항이면
+    70%의 구간이 대략 52~83%라, 한두 문제 차이는 구분되지 않는다."""
+    if n == 0:
+        return [0.0, 1.0]
+    p = k / n
+    d = 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
+
+
 def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip=None):
     """다지선다 채점. 세 가지 점수를 한 번에 낸다.
 
@@ -200,7 +212,8 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
           학습 중에 본 문항을 기억해서 얻은 이득(기억 효과)이 나온다.
 
     acc        log P(choice | context) 합이 가장 큰 선택지 (원시 점수)
-    acc_len    위 값을 선택지 바이트 수로 나눈 것 (lm-eval-harness의 acc_norm)
+    acc_len    위 값을 선택지 UTF-8 바이트 수로 나눈 것 (lm-eval-harness의 acc_bytes. 글자 수로 나누는
+               acc_norm과는 다르다 — 한글은 3바이트라 숫자·영문 보기와 섞이면 순위가 달라질 수 있다)
     acc_calib  비조건부 정규화 (normalized_score) — 이 저장소의 기본 지표
 
     예측 분포도 지표별로 센다. 한쪽으로 쏠리면 정확도는 라벨 분포일 뿐이다.
@@ -215,11 +228,14 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
     names = ("acc", "acc_len", "acc_calib")
     correct = dict.fromkeys(names, 0)
     preds = {n: {} for n in names}
-    total = excluded = 0
+    total = excluded = degenerate = 0
     ex_correct = dict.fromkeys(names, 0)
     for i, row in enumerate(test_rows):
         held_out = bool(skip) and i in skip
         ctx, choices, label = fmt(row)
+        if len(set(choices)) == 1:  # 보기가 전부 같은 문항(KMMLU의 '보기없음'·'복원중' 등) — 채점 불가
+            degenerate += 1
+            continue
         cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
         if todo:
@@ -233,16 +249,20 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
         }
         for n in names:
             p = max(range(len(choices)), key=scores[n].__getitem__)
+            # 같은 보기가 두 번 나오면 점수도 같아 앞쪽이 뽑힌다 — 정답이 뒤쪽 사본이어도 맞힌 것으로
+            # (예전엔 이런 KMMLU 문항 7개는 모델이 아무리 좋아도 틀렸다)
+            hit = int(choices[p] == choices[label])
             if held_out:
-                ex_correct[n] += int(p == label)
+                ex_correct[n] += hit
                 continue
             preds[n][p] = preds[n].get(p, 0) + 1
-            correct[n] += int(p == label)
+            correct[n] += hit
         excluded += held_out
         total += not held_out
     return {"n": total, **{n: correct[n] / max(1, total) for n in names},
+            "ci95": {n: wilson_ci(correct[n], total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
-            "truncated": stats["truncated"], "excluded": excluded,
+            "truncated": stats["truncated"], "excluded": excluded, "degenerate": degenerate,
             "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
 
 
@@ -299,10 +319,13 @@ def _aggregate(per):
     n = sum(r["n"] for r in per.values())
     ex = sum(r.get("excluded", 0) for r in per.values())
     out = {"n": n, "truncated": sum(r["truncated"] for r in per.values()), "excluded": ex,
+           "degenerate": sum(r.get("degenerate", 0) for r in per.values()),
            "excluded_acc": {k: sum(r["excluded_acc"][k] * r["excluded"] for r in per.values()
                                    if r.get("excluded")) / ex for k in names} if ex else None}
     for k in names:
         out[k] = sum(r[k] * r["n"] for r in per.values()) / max(1, n)
+    out["ci95"] = {k: wilson_ci(round(out[k] * n), n) for k in names}
+    for k in names:
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
     out["by_config"] = {c: {**{k: r[k] for k in ("n", *names, "truncated")},
                            "excluded": r.get("excluded", 0)} for c, r in per.items()}
@@ -463,7 +486,7 @@ def main():
                                    seed=123, device=device)
         ppl, loss = perplexity(model, loader, 20, device_type)
         print(f"val perplexity: {ppl:.2f} (loss {loss:.4f})")
-        loader.step = 0  # 같은 배치로
+        loader.reset()  # 같은 배치로
         print(f"val bits-per-byte: {bits_per_byte(model, loader, 20, device_type, tok):.4f} "
               "(토크나이저와 무관 — 다른 모델과 비교 가능)")
 

@@ -19,14 +19,16 @@ import argparse
 import json
 import os
 import time
+import unicodedata
+from collections import Counter
 from multiprocessing import Pool
 
 
 from chat import render
 from tokenizer.bpe import ByteBPETokenizer
 
-from .clean import MinHashDeduper, keep_document
-from .prepare import SHARD_TOKENS, ShardWriter
+from .clean import VAL_FRACTION, MinHashDeduper, is_val, keep_document
+from .prepare import SHARD_TOKENS, ShardWriter, clear_old_shards
 from .quality import QualityClassifier
 
 # maywell/korean_textbooks 중 실제로 데이터가 있는 구성만.
@@ -83,29 +85,31 @@ def _process(job):
     여기에 중복 제거를 걸면 2회차부터 전부 버려져 반복이 무효가 된다
     (2026-08-13에 실제로 발생: 위키 3회 반복이 1회분만 남았다).
     """
-    text, threshold, korean, is_instruction, dedup = job
+    text, threshold, korean, is_instruction, dedup, val_ratio = job
+    text = unicodedata.normalize("NFC", text)  # NFD 한글은 한글 비율 0으로 버려졌다
+    val = is_val(text, val_ratio)
     if is_instruction:
         # SFT와 같은 chat 형식으로 넣는다 — 이후 SFT 효과가 좋아진다는 게 최신 관행
         ids = _tok.encode(text, allowed_special=True) + [_tok.special_tokens["<|eos|>"]]
-        return (_deduper.band_keys(text[:2000]) if dedup else []), ids
+        return (_deduper.band_keys(text[:2000]) if dedup else []), ids, val
     if not keep_document(text, korean_source=korean):
-        return None, None
+        return None, None, False
     if threshold is not None and _qc.score(text) < threshold:
-        return None, None
+        return None, None, False
     keys = _deduper.band_keys(text[:2000]) if dedup else []
-    return keys, _tok.encode(text) + [_tok.special_tokens["<|eos|>"]]
+    return keys, _tok.encode(text) + [_tok.special_tokens["<|eos|>"]], val
 
 
 def build_stream(src):
-    """한 소스의 모든 part를 repeat만큼 순회하며 작업 단위를 생산.
+    """한 소스의 모든 part를 repeat만큼 순회하며 (회차, 작업 단위)를 생산.
 
     한 소스가 여러 데이터셋/구성(parts)으로 이뤄질 수 있다. 예: 교과서는 17개 구성,
     instruction은 두 데이터셋. 예산에 도달하면 호출 측에서 중단하므로
     repeat는 넉넉히 잡아도 된다.
     """
-    from datasets import load_dataset
+    from .prepare import load_dataset  # 늦은 import (테스트가 바꿔 끼운다)
 
-    for _ in range(src["repeat"]):
+    for pass_idx in range(src["repeat"]):
         for name, config in src["parts"]:
             try:
                 ds = load_dataset(name, config, split="train", streaming=True)
@@ -128,8 +132,8 @@ def build_stream(src):
                 else:
                     text = row.get("text")
                 if text:
-                    yield (text, src["threshold"], src["korean"],
-                           bool(src.get("instruction")), src.get("dedup", True))
+                    yield pass_idx, (text, src["threshold"], src["korean"],
+                                     bool(src.get("instruction")), src.get("dedup", True))
 
 
 def main():
@@ -138,18 +142,35 @@ def main():
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--quality", default="data/quality_ko.npz")
     ap.add_argument("--out-dir", default="data/shards_anneal")
-    ap.add_argument("--val-ratio", type=float, default=0.004)
+    ap.add_argument("--val-ratio", type=float, default=VAL_FRACTION,
+                    help="val 문서 비율 (해시로 고른다). data.prepare와 같은 값이어야 사전학습 val이 "
+                         "annealing train에 들어가지 않는다")
     ap.add_argument("--workers", type=int, default=40)
+    ap.add_argument("--overwrite", action="store_true", help="out-dir의 이전 shard를 지우고 다시 만든다")
     args = ap.parse_args()
+    run(args)
+    os._exit(0)  # pyarrow 스레드풀 종료 데드락 우회 (prepare.py와 동일)
 
+
+def run(args):
+    """val은 문서 해시로 고르고(data.clean.is_val), 반복 회차 2회차부터는 val 문서를 건너뛴다.
+    예전에는 처음 나온 문서 N토큰을 val로 써서, dedup 없이 반복하는 교과서·위키·instruction의
+    val 문서가 2회차부터 train에 들어갔다(val perplexity가 학습한 글로 재졌다).
+
+    dedup=True이고 repeat>1인 소스(나무위키)는 1회차에서만 중복을 판정하고, 2회차부터는 1회차에
+    채택된 문서만 다시 넣는다. 예전에는 2회차 문서가 1회차와 '중복'으로 전부 버려져 반복이
+    무효였다(나무위키 2회 반복 → 1회분 540M만 남음).
+    """
     os.makedirs(args.out_dir, exist_ok=True)
+    clear_old_shards(args.out_dir, args.overwrite)
     target = int(args.tokens)
 
     streams = []
     for src in SOURCES:
         budget = int(target * src["ratio"])
-        streams.append({**src, "budget": budget, "got": 0,
-                        "it": build_stream(src), "seen": 0, "kept": 0})
+        streams.append({**src, "budget": budget, "got": 0, "it": build_stream(src), "seen": 0,
+                        "kept": 0, "val_skipped": 0, "kept_once": Counter(), "this_pass": (0, Counter()),
+                        "exhausted": False})
 
     deduper = MinHashDeduper()
     train_w = ShardWriter(args.out_dir, "train")
@@ -169,39 +190,53 @@ def main():
                           f"(문서 {s['seen']} 중 {s['kept']} 채택)", flush=True)
                     continue
                 try:
-                    job = next(s["it"])
+                    pass_idx, job = next(s["it"])
                 except StopIteration:
                     active.remove(s)
-                    print(f"[{s['label']}] 소진 {s['got']/1e6:.0f}M tokens "
+                    s["exhausted"] = True
+                    print(f"[{s['label']}] 소진 {s['got']/1e6:.0f}M / 예산 {s['budget']/1e6:.0f}M tokens "
                           f"(문서 {s['seen']} 중 {s['kept']} 채택)", flush=True)
                     continue
                 s["seen"] += 1
                 n_docs += 1
-                yield s, job
+                yield s, pass_idx, job
 
     with Pool(args.workers, initializer=_init_worker,
               initargs=(args.tokenizer, args.quality)) as pool:
         pending = []
 
         def payloads():
-            for s, job in jobs():
-                pending.append(s)
-                yield job
+            for s, pass_idx, job in jobs():
+                pending.append((s, pass_idx))
+                yield (*job, args.val_ratio)
 
-        for keys, ids in pool.imap(_process, payloads(), chunksize=8):
-            s = pending.pop(0)
+        for keys, ids, val in pool.imap(_process, payloads(), chunksize=8):
+            s, pass_idx = pending.pop(0)
             if keys is None:
                 n_filtered += 1
                 continue
-            if keys and deduper.check_keys(keys):  # keys가 비면 dedup 대상이 아니다
-                n_dup += 1
+            if val and pass_idx > 0:  # val 문서는 1회차에 한 번만 val로
+                s["val_skipped"] += 1
                 continue
+            if keys:  # keys가 비면 dedup 대상이 아니다
+                sig = b"".join(keys)
+                if pass_idx == 0:
+                    if deduper.check_keys(keys):
+                        n_dup += 1
+                        continue
+                    if s["repeat"] > 1:
+                        s["kept_once"][sig] += 1
+                else:  # 2회차부터는 1회차에 채택된 문서만, 채택된 횟수까지만 (정확한 사본은 서명이 같다)
+                    if s["this_pass"][0] != pass_idx:
+                        s["this_pass"] = (pass_idx, Counter())
+                    used = s["this_pass"][1]
+                    if used[sig] >= s["kept_once"][sig]:
+                        n_dup += 1
+                        continue
+                    used[sig] += 1
             s["got"] += len(ids)
             s["kept"] += 1
-            if val_w.total < target * args.val_ratio:
-                val_w.add(ids)
-            else:
-                train_w.add(ids)
+            (val_w if val else train_w).add(ids)
             done = train_w.total + val_w.total
             if done % 10_000_000 < len(ids):
                 rate = done / (time.time() - t_start)
@@ -212,22 +247,32 @@ def main():
 
     train_w.close()
     val_w.close()
+    short = [s for s in streams if s["got"] < 0.98 * s["budget"]]
+    for s in short:
+        print(f"경고: [{s['label']}] 예산의 {s['got'] / max(1, s['budget']):.0%}만 채움 "
+              f"({s['got']/1e6:.0f}M / {s['budget']/1e6:.0f}M) — 혼합 비율이 설정과 다르다", flush=True)
+    total = sum(s["got"] for s in streams) or 1
+    meta = {
+        "purpose": "annealing (LR decay 구간용 고품질 혼합)",
+        "tokenizer": args.tokenizer,
+        "quality_model": args.quality,
+        "shard_tokens": SHARD_TOKENS,
+        "train_tokens": train_w.total,
+        "val_tokens": val_w.total,
+        "val_ratio": args.val_ratio, "val_split": "hash",
+        "docs": n_docs, "filtered": n_filtered, "duplicates": n_dup,
+        "sources": [{"label": s["label"], "parts": s["parts"], "ratio": s["ratio"],
+                     "threshold": s["threshold"], "repeat": s["repeat"],
+                     "dedup": s.get("dedup", True), "budget": s["budget"], "got": s["got"],
+                     "seen": s["seen"], "kept": s["kept"], "val_skipped": s["val_skipped"],
+                     "exhausted": s["exhausted"]} for s in streams],
+        "realized_mix": {s["label"]: round(s["got"] / total, 4) for s in streams},
+    }
     with open(os.path.join(args.out_dir, "meta.json"), "w") as f:
-        json.dump({
-            "purpose": "annealing (LR decay 구간용 고품질 혼합)",
-            "tokenizer": args.tokenizer,
-            "quality_model": args.quality,
-            "shard_tokens": SHARD_TOKENS,
-            "train_tokens": train_w.total,
-            "val_tokens": val_w.total,
-            "docs": n_docs, "filtered": n_filtered, "duplicates": n_dup,
-            "sources": [{"label": s["label"], "parts": s["parts"], "ratio": s["ratio"],
-                         "threshold": s["threshold"], "repeat": s["repeat"],
-                         "dedup": s.get("dedup", True), "got": s["got"],
-                         "seen": s["seen"], "kept": s["kept"]} for s in streams],
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    print("실제 혼합: " + ", ".join(f"{k} {v:.1%}" for k, v in meta["realized_mix"].items()), flush=True)
     print(f"\n완료: train {train_w.total/1e6:.1f}M / val {val_w.total/1e6:.1f}M tokens", flush=True)
-    os._exit(0)  # pyarrow 스레드풀 종료 데드락 우회 (prepare.py와 동일)
+    return meta
 
 
 if __name__ == "__main__":

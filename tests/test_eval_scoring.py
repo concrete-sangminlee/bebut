@@ -99,7 +99,7 @@ def test_bits_per_byte_matches_manual(tmp_path, tiny_tok):
     loader = ShardedDataLoader(str(tmp_path), "val", 2, 32, seed=1, mode="epoch")
     got = bits_per_byte(model, loader, 3, "cpu", tiny_tok, chunk=7)
 
-    loader.step = 0
+    loader.reset()
     nats = nbytes = 0.0
     for _ in range(3):
         x, y = loader.next_batch()

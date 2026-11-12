@@ -61,6 +61,16 @@ cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 python serve.py --ckpt checkpoints/sft_1b/latest.pt
 ```
 
+## 내보낸 모델(HF · GGUF)을 쓸 때 주의
+
+- **입력을 NFC로 정규화하세요.** 이 저장소의 대화 CLI·서버는 메시지를 NFC로 바꾸지만, 내보낸
+  토크나이저는 원본과 바이트 단위로 같아야 해서 정규화하지 않습니다. 맥 파일 이름이나 PDF에서 온
+  NFD 한글(자모 분리)은 학습 때 본 적 없는 바이트 조각 토큰이 됩니다(한 문장 9 → 151토큰).
+- assistant 기록이 공백·줄바꿈으로 시작하는 경우에만, 내장 chat_template의 토큰 경계가 SFT와
+  달라질 수 있습니다. 보통의 대화에서는 토큰까지 같습니다.
+- 생성은 `<|im_end|>`와 `<|eos|>` 둘 다에서 멈춥니다(HF generation_config, GGUF의 eot·eom, Ollama
+  Modelfile의 stop).
+
 ## 시도했다가 접은 것: 추측 디코딩
 
 같은 토크나이저로 학습한 125M 모델이 있어서, 그것을 초안(draft) 모델로 쓰는 추측
