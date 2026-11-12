@@ -54,27 +54,49 @@ class ByteBPETokenizer:
     # ---------------- 인코딩 / 디코딩 ----------------
 
     def _merge_chunk(self, ids: tuple[int, ...]) -> tuple[int, ...]:
-        """한 chunk 안에서 rank가 낮은(=먼저 학습된) 쌍부터 반복 merge."""
+        """한 chunk 안에서 rank가 낮은(=먼저 학습된) 쌍부터 반복 merge.
+
+        연결 리스트 + 힙: 인접 쌍을 (rank, 위치) 힙에 넣고 가장 낮은 rank부터 꺼내 합친 뒤,
+        새로 생긴 양옆 쌍만 다시 넣는다. 예전 구현은 merge 한 번마다 chunk 전체를 다시 훑어
+        긴 chunk(공백 없는 8만 자 등)에서 이차 시간이었다 — 서버의 4MB 요청 하나가 몇 분을
+        잡았다. 결과는 같다: 합쳐서 생긴 토큰이 들어간 쌍은 그 merge보다 나중에 학습돼 rank가
+        더 크므로, 같은 rank의 쌍을 왼쪽부터 전부 합친 뒤에야 다음 rank로 넘어간다
+        (tests/test_tokenizer_merge.py가 예전 구현과 대조한다).
+        """
+        n = len(ids)
+        if n < 2:
+            return tuple(ids)
+        ranks = self.ranks
         ids = list(ids)
-        while len(ids) >= 2:
-            best_pair, best_rank = None, None
-            for pair in zip(ids, ids[1:]):
-                r = self.ranks.get(pair)
-                if r is not None and (best_rank is None or r < best_rank):
-                    best_pair, best_rank = pair, r
-            if best_pair is None:
-                break
-            new_id = 256 + best_rank
-            out, i = [], 0
-            while i < len(ids):
-                if i < len(ids) - 1 and (ids[i], ids[i + 1]) == best_pair:
-                    out.append(new_id)
-                    i += 2
-                else:
-                    out.append(ids[i])
-                    i += 1
-            ids = out
-        return tuple(ids)
+        nxt = list(range(1, n + 1))
+        nxt[-1] = -1
+        prv = list(range(-1, n - 1))
+        alive = [True] * n
+        heap = [(r, i) for i in range(n - 1) if (r := ranks.get((ids[i], ids[i + 1]))) is not None]
+        heapq.heapify(heap)
+        while heap:
+            r, i = heapq.heappop(heap)
+            if not alive[i]:
+                continue
+            j = nxt[i]
+            if j == -1 or ranks.get((ids[i], ids[j])) != r:  # 이미 바뀐 자리
+                continue
+            ids[i] = 256 + r
+            alive[j] = False
+            k = nxt[j]
+            nxt[i] = k
+            if k != -1:
+                prv[k] = i
+                if (rr := ranks.get((ids[i], ids[k]))) is not None:
+                    heapq.heappush(heap, (rr, i))
+            p = prv[i]
+            if p != -1 and (rr := ranks.get((ids[p], ids[i]))) is not None:
+                heapq.heappush(heap, (rr, p))
+        out, i = [], 0
+        while i != -1:
+            out.append(ids[i])
+            i = nxt[i]
+        return tuple(out)
 
     @lru_cache(maxsize=1 << 20)
     def _encode_chunk(self, chunk: str) -> tuple[int, ...]:
