@@ -84,3 +84,25 @@ def test_bebut_scorer_matches_direct_forward(tiny_tok):
     assert n == len(long_ids) and math.isfinite(nats)
     r = score_text(s, DOCS, max_len=1024, stride=512)  # max_len은 모델 문맥(64)으로 줄어든다
     assert r["docs"] == 3 and 0 < r["bpb"] < 40
+
+
+def test_merge_baselines_only_joins_the_same_text(tmp_path):
+    """--baseline: 같은 글 · 같은 창으로 잰 예전 결과만 한 표에 합친다 (글이 다르면 BPB는 비교 불가)."""
+    import json
+
+    from evals.text_bpb import merge_baselines
+
+    def result(models, sha="aaaa", max_len=1024):
+        return {"max_len": max_len, "stride": 512, "text": {"웹": {"sha256": sha}},
+                "models": {m: {"params": 10, "domains": {"웹": {"bpb": b}}} for m, b in models.items()}}
+
+    paths = []
+    for k, r in enumerate([result({"공개A": 1.2, "공개B": 0.9}), result({"다른글": 0.1}, sha="bbbb"),
+                           result({"다른창": 0.2}, max_len=512), result({"bebut": 9.9})]):
+        paths.append(str(tmp_path / f"b{k}.json"))
+        json.dump(r, open(paths[-1], "w", encoding="utf-8"))
+
+    table, skipped = merge_baselines(result({"bebut": 1.0}), paths)
+    assert [(m, b) for m, b, _, _ in table["웹"]] == [("공개B", 0.9), ("bebut", 1.0), ("공개A", 1.2)]  # BPB 순
+    assert table["웹"][1][3] == "이번"  # 이름이 같으면 이번에 잰 값이 이긴다
+    assert len(skipped) == 2 and "sha256" in skipped[0] and "문맥 창" in skipped[1]

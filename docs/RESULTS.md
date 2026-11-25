@@ -63,6 +63,7 @@ encode("…\n답: 예")  → [… ":", " 예"]     ← 공백이 '예'에 붙었
 ### 재측정
 
 ```bash
+./remeasure.sh          # 아래 두 평가 + 원문 BPB + 양자화 품질을 순서대로, 끝에 짝 비교까지 (§6)
 python final_eval.py --out logs/final_eval_v2.json
 python sft_eval.py --out logs/sft_eval_v2.json --answers-out logs/sft_eval_answers_v2.md
 python eval.py --ckpt checkpoints/base_1b/latest.pt --kobest boolq --shots 2   # 한 과제만
@@ -263,17 +264,21 @@ SFT 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그�
 
 ## 6. 다음에 잴 것
 
-이 저장소에는 아래 실험을 돌릴 코드와 평가셋이 준비돼 있고, 수치는 아직 없습니다.
+이 저장소에는 아래 실험을 돌릴 코드와 평가셋이 준비돼 있고, 수치는 아직 없습니다. 체크포인트가
+있는 서버에서 **`./remeasure.sh` 한 번**이면 학습 없이 잴 수 있는 것(아래 표의 ①)을 순서대로 만들고,
+annealing 직전/최종 · 베이스/SFT를 같은 문항끼리 짝 비교해 차이가 표본 오차보다 큰지까지 출력합니다.
+결과 파일이 있는 단계는 건너뛰므로 중간에 끊겨도 다시 부르면 이어집니다 (`DRY_RUN=1`로 명령만 확인).
 
 | 질문 | 방법 | 비교 기준 |
 |---|---|---|
-| 채점 버그를 고친 KOBEST, 특히 BoolQ의 실제 수준은? | `final_eval.py`, `sft_eval.py` 재실행 (§0) | 무작위 50% / 기존 †값 |
-| 다른 한국어 모델과 비교하면? | `final_eval.py`가 기록하는 **bits-per-byte** (토크나이저와 무관) | 같은 val 텍스트에서의 다른 모델 BPB |
-| 전문 지식·한국 문화 지식은? | `final_eval.py --exclude-ids evals/contaminated_ids.json`의 **KMMLU**(45과목, 5-shot)·**HAE-RAE**(6범주) — 리더보드와 비교하려면 `--format mc` | 무작위 25%(KMMLU)·20~25%(HAE-RAE), 공개된 다른 모델 점수 |
+| ① 채점 버그를 고친 KOBEST, 특히 BoolQ의 실제 수준은? | `final_eval.py`, `sft_eval.py` 재실행 (§0) | 무작위 50% / 기존 †값 |
+| ① 다른 한국어 모델과 비교하면? | `python -m evals.text_bpb --ckpt … --baseline logs/text_bpb.json` — 같은 원문의 **bits-per-byte** (토크나이저와 무관, §9) | §9의 공개 모델 기준값 |
+| ① 전문 지식·한국 문화 지식은? | `final_eval.py --exclude-ids evals/contaminated_ids.json`의 **KMMLU**(45과목, 5-shot)·**HAE-RAE**(6범주) — 리더보드와 비교하려면 `--format mc` | 무작위 25%(KMMLU)·20~25%(HAE-RAE), 공개된 다른 모델 점수 |
+| ① 양자화가 품질을 얼마나 깎나? | `python -m evals.quant_quality --ckpt …` (F16 · Q8_0 · Q4_0의 perplexity 변화) | 구조가 같은 공개 모델의 실측 ([INFERENCE.md](INFERENCE.md)) |
 | 합성 산술 데이터로 계산이 되나? | `--extra-data data/math_sft.jsonl`로 SFT → `evals/math_heldout_ko.json` 200문항 | 기존 SFT 모델의 같은 200문항 |
 | DPO가 대화 품질을 올리나? | `dpo.py` → `sft_eval.py` (멈춤·반복·정답률) + KOBEST | SFT 최종 |
 | 반복 억제가 반복 루프를 줄이나? | `sft_eval.py --repetition-penalty 1.1` | 같은 모델, 1.0 |
-| 학습 중 본 기출 문항을 기억하나? | `final_eval.py --exclude-ids evals/contaminated_ids.json`의 `excluded_acc` (오염 KMMLU 678문항만의 점수, §8) | 같은 모델의 나머지 문항 점수 |
+| ① 학습 중 본 기출 문항을 기억하나? | `final_eval.py --exclude-ids evals/contaminated_ids.json`의 `excluded_acc` (오염 KMMLU 678문항만의 점수, §8) | 같은 모델의 나머지 문항 점수 |
 
 산술 평가셋은 학습 데이터와 (연산, 피연산자) 조합이 겹치지 않으므로, 점수가 오르면 문제를
 외운 게 아니라 계산 절차를 익힌 것입니다. 연산별·자릿수별로 쪼개 보려면 각 문항의 `meta`를 쓰면 됩니다.

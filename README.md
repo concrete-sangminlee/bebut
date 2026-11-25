@@ -261,6 +261,7 @@ sft_eval.py              SFT 평가 (자체 문항 + KOBEST)
 compare_evals.py         평가 결과 두 개를 같은 문항끼리 짝 비교 (McNemar · 차이의 95% 구간)
 bench.py                 처리량·VRAM 벤치마크
 bench_infer.py           추론 속도 측정 (PyTorch fp32/bf16 · 프리픽스 캐시 · GGUF 타입별)
+remeasure.sh             서버에서 한 번에: 미측정 수치(평가 재실행 · 원문 BPB · 양자화 품질) + 짝 비교
 test_model.py            모델 검증 6종
 tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT·DPO e2e, 서버, CLI, HF·GGUF 내보내기
 

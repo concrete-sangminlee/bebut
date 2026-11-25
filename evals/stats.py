@@ -54,7 +54,10 @@ def mcnemar(a_only: int, b_only: int) -> float:
 def paired_diff(a: str, b: str) -> dict:
     """문항별 정오 문자열('1' 맞힘 · '0' 틀림 · 그 밖은 채점 제외) 둘 → B − A의 차이와 검정.
 
-    구간은 짝 차이 d_i ∈ {−1, 0, +1}의 평균에 대한 정규 근사(SE = sqrt(var(d) / n)).
+    구간은 Bonett–Price(2012)의 보정 Wald 구간: 한쪽만 맞힌 수 두 칸에 1씩 더하고(n에는 2)
+    정규 근사를 쓴다. 보정하지 않은 Wald 구간은 엇갈린 문항이 없으면 폭이 0이 되고(30문항에서 두
+    모델이 똑같이 답했다고 차이가 정확히 0이라고 할 수는 없다), 작은 표본에서 실제 포함률이 95%에
+    못 미친다 — tests/test_stats.py가 포함률을 직접 센다.
     """
     if len(a) != len(b):
         raise ValueError(f"문항 수가 다르다 ({len(a)} vs {len(b)}) — 같은 문항·같은 --limit으로 잰 결과여야 한다")
@@ -63,11 +66,17 @@ def paired_diff(a: str, b: str) -> dict:
     a_only = sum(x == "1" and y == "0" for x, y in pairs)
     b_only = sum(x == "0" and y == "1" for x, y in pairs)
     ka, kb = sum(x == "1" for x, _ in pairs), sum(y == "1" for _, y in pairs)
-    diff = (kb - ka) / max(1, n)
-    se = math.sqrt(max(0.0, (a_only + b_only) / max(1, n) - diff * diff) / max(1, n))
-    return {"method": "paired", "n": n, "acc_a": ka / max(1, n), "acc_b": kb / max(1, n), "diff": diff,
-            "ci95": [diff - Z95 * se, diff + Z95 * se], "p": mcnemar(a_only, b_only),
+    return {"method": "paired", "n": n, "acc_a": ka / max(1, n), "acc_b": kb / max(1, n),
+            "diff": (kb - ka) / max(1, n), "ci95": paired_ci(a_only, b_only, n), "p": mcnemar(a_only, b_only),
             "a_only": a_only, "b_only": b_only}
+
+
+def paired_ci(a_only: int, b_only: int, n: int) -> list[float]:
+    """짝 지은 n문항에서 B − A 정답률 차이의 95% 구간 (Bonett–Price 보정 Wald)."""
+    pa, pb = (a_only + 1) / (n + 2), (b_only + 1) / (n + 2)
+    mid = pb - pa
+    half = Z95 * math.sqrt((pa + pb - mid * mid) / (n + 2))
+    return [max(-1.0, mid - half), min(1.0, mid + half)]
 
 
 def unpaired_diff(ka: int, na: int, kb: int, nb: int) -> dict:

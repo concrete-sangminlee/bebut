@@ -54,6 +54,9 @@ DATA = {
     "HAERAE-HUB/KMMLU": {sub: {"dev": Rows(_kmmlu(i) for i in range(5)), "test": Rows(_kmmlu(i) for i in range(6))}
                          for sub in ("Biology", "Law")},
     "HAERAE-HUB/HAE_RAE_BENCH_1.0": {"History": {"test": Rows(_haerae(i) for i in range(9))}},
+    "HuggingFaceFW/fineweb-2": {"kor_Hang": {"test": Rows(
+        {"text": f"{i}번째 글. " + "한글은 조선의 세종이 만든 글자이고, 서울은 대한민국의 수도이다. " * (20 + 30 * i)}
+        for i in range(4))}},
 }
 
 
@@ -142,3 +145,48 @@ def test_sft_eval_cli(ws):
               "--out", "rescored.json")
     again = json.load(open(ws / "rescored.json", encoding="utf-8"))
     assert again["SFT"]["heldout_acc"] == r["heldout_acc"] and again["베이스"]["excluded"] == 1
+
+
+def test_remeasure_script_end_to_end(ws, tmp_path):
+    """remeasure.sh를 초소형 체크포인트로 끝까지 돌린다. 단계마다 라벨·파일 이름이 다음 단계와 맞물려야
+    한다 — 어긋나면 마지막의 짝 비교(compare_evals.py)가 라벨을 못 찾아 실패한다."""
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ws / "stub"), ROOT]), "PY": sys.executable,
+           "OUT": str(tmp_path), "PRE": str(ws / "a.pt"), "BASE": str(ws / "b.pt"), "SFT_E0": str(ws / "a.pt"),
+           "SFT": str(ws / "b.pt"), "DEVICE": "cpu", "LIMIT": "4"}
+    env.pop("DRY_RUN", None)
+
+    def remeasure(**extra):
+        r = subprocess.run(["bash", os.path.join(ROOT, "remeasure.sh")], env={**env, **extra}, capture_output=True,
+                           text=True, timeout=900)
+        assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+        return r.stdout
+
+    dry = remeasure(DRY_RUN="1")
+    assert all(x in dry for x in ("final_eval.py", "sft_eval.py", "evals.text_bpb", "evals.quant_quality",
+                                  "compare_evals.py", "--limit 4"))
+    assert not os.listdir(tmp_path)  # 명령만 보여주고 아무것도 돌리지 않았다
+
+    out = remeasure()
+    final = json.load(open(tmp_path / "final_eval_v2.json", encoding="utf-8"))
+    assert list(final) == ["annealing 직전", "최종"] and final["최종"]["bench"]["kmmlu"]["n"] > 0
+    sft = json.load(open(tmp_path / "sft_eval_v2.json", encoding="utf-8"))
+    assert list(sft) == ["베이스", "SFT 에폭0", "SFT 최종"] and (tmp_path / "sft_eval_answers_v2.md").exists()
+    bpb = json.load(open(tmp_path / "text_bpb_bebut.json", encoding="utf-8"))
+    assert list(bpb["models"]) == ["annealing 직전", "최종", "SFT 최종"]
+    assert all(m["domains"]["웹 (FineWeb-2 ko test)"]["bpb"] > 0 for m in bpb["models"].values())
+    # 가짜 글은 커밋된 공개 모델 기준값(logs/text_bpb.json)과 다른 글이라 한 표에 넣지 않는다
+    assert ("합치지 않음" in out) == os.path.exists(os.path.join(ROOT, "logs", "text_bpb.json"))
+    assert "A = annealing 직전  →  B = 최종" in out and "A = 베이스  →  B = SFT 최종" in out
+    assert out.count("짝 비교 n=") >= 8  # 두 비교 모두 문항별 기록으로 짝을 지었다
+    try:
+        import llama_cpp  # noqa: F401
+        assert set(json.load(open(tmp_path / "quant_quality_bebut.json", encoding="utf-8"))["results"]) == {
+            "torch_fp32", "f16", "q8_0", "q4_0"}
+    except ImportError:
+        assert "llama-cpp-python이 없다" in out and "건너뛴 단계" in out
+
+    again = remeasure()  # 결과가 있으면 다시 재지 않는다
+    assert again.count("[건너뜀]") >= 3 and "=====" not in again
+
+    missing = remeasure(OUT=str(tmp_path / "none"), BASE=str(ws / "no.pt"), SFT=str(ws / "no2.pt"))
+    assert "체크포인트가 없어 건너뛴다" in missing and "건너뛴 단계" in missing

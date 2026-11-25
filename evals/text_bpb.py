@@ -24,12 +24,14 @@ bebut에게는 held-out이다. 공개 모델이 이 글을 학습했는지는 �
   python -m evals.text_bpb --ckpt 최종=checkpoints/base_1b/latest.pt --out logs/text_bpb.json
   python -m evals.text_bpb --hf EleutherAI/polyglot-ko-1.3b Qwen/Qwen2.5-1.5B --kb 300
   python -m evals.text_bpb --ckpt ... --text-file my.txt        # 빈 줄로 문서를 나눈 직접 고른 글
+  python -m evals.text_bpb --ckpt 최종=... --baseline logs/text_bpb.json   # 예전에 잰 모델과 한 표로
 """
 
 import argparse
 import hashlib
 import json
 import math
+import os
 import time
 
 import torch
@@ -160,6 +162,30 @@ def load_docs(kb, text_file=None):
     return {"웹 (FineWeb-2 ko test)": _stream("HuggingFaceFW/fineweb-2", "kor_Hang", "test", int(kb * 1000))}
 
 
+def merge_baselines(out, paths):
+    """이번 결과(out)에 예전 결과 파일들의 모델을 영역별로 합쳐 BPB 순으로 정렬한다.
+
+    같은 글(sha256) · 같은 창(max_len, stride)으로 잰 것만 합친다 — 글이 다르면 BPB는 나란히 놓을 수
+    없다. 돌려주는 값: ({영역: [(모델, bpb, 파라미터 수, 출처)]}, [합치지 않은 이유])."""
+    table = {d: [(m, r["domains"][d]["bpb"], r.get("params"), "이번")
+                 for m, r in out["models"].items() if d in r["domains"]] for d in out["text"]}
+    skipped = []
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            base = json.load(f)
+        if (base.get("max_len"), base.get("stride")) != (out["max_len"], out["stride"]):
+            skipped.append(f"{path}: 문맥 창이 다르다 (max_len {base.get('max_len')} · stride {base.get('stride')})")
+            continue
+        for d, info in out["text"].items():
+            if base.get("text", {}).get(d, {}).get("sha256") != info["sha256"]:
+                skipped.append(f"{path} [{d}]: 잰 글이 다르다 (sha256 불일치 — 문서가 빠졌거나 --kb가 다르다)")
+                continue
+            have = {m for m, *_ in table[d]}
+            table[d] += [(m, r["domains"][d]["bpb"], r.get("params"), path)
+                         for m, r in base["models"].items() if d in r["domains"] and m not in have]
+    return {d: sorted(rows, key=lambda r: r[1]) for d, rows in table.items()}, skipped
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", nargs="*", default=[], help="이 저장소의 체크포인트 — 라벨=경로")
@@ -170,10 +196,15 @@ def main():
     ap.add_argument("--max-len", type=int, default=1024, help="모든 모델에 주는 문맥 창 (토큰)")
     ap.add_argument("--stride", type=int, default=512)
     ap.add_argument("--device", default="auto")
+    ap.add_argument("--baseline", nargs="*", default=[],
+                    help="예전 결과 JSON (예: logs/text_bpb.json) — 같은 글로 잰 모델을 한 표에 합쳐 보여준다")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     if not args.ckpt and not args.hf:
         ap.error("--ckpt 또는 --hf로 모델을 하나 이상 주세요")
+    for path in args.baseline:  # 몇 시간 잰 뒤에 파일이 없다고 죽지 않게 먼저 확인한다
+        if not os.path.exists(path):
+            ap.error(f"--baseline 파일이 없습니다: {path}")
 
     from sample import load_model, pick_device
     from tokenizer.bpe import ByteBPETokenizer
@@ -218,11 +249,20 @@ def main():
         results[scorer.name] = r
         del scorer
 
+    out = {"max_len": args.max_len, "stride": args.stride, "dtype": "fp32", "text": text_info, "models": results}
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
-            json.dump({"max_len": args.max_len, "stride": args.stride, "dtype": "fp32", "text": text_info,
-                       "models": results}, f, ensure_ascii=False, indent=1)
+            json.dump(out, f, ensure_ascii=False, indent=1)
         print(f"\n저장: {args.out}")
+    if args.baseline:
+        table, skipped = merge_baselines(out, args.baseline)
+        for d, rows in table.items():
+            print(f"\n[{d}] bits-per-byte — 낮을수록 좋다")
+            for name, bpb, params, src in rows:
+                size = f"{params / 1e9:.2f}B" if params else "?"
+                print(f"  {bpb:.4f}  {name} ({size}){'' if src == '이번' else '  ← ' + src}")
+        for why in skipped:
+            print(f"  합치지 않음 — {why}")
 
 
 if __name__ == "__main__":

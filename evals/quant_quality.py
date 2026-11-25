@@ -143,6 +143,8 @@ def main():
     docs = _stream("HuggingFaceFW/fineweb-2", "kor_Hang", "test", int(args.kb * 1000))
     chunks = [c for d in docs for c in chunks_of(encode(d), args.ctx)]
     chunks = chunks[: args.max_chunks] if args.max_chunks else chunks
+    if not chunks:
+        raise SystemExit(f"글이 너무 짧다: {args.ctx}토큰을 채우는 문서가 없다 (--kb를 늘리거나 --ctx를 줄이세요)")
     print(f"글: 문서 {len(docs)}개 → {args.ctx}토큰 묶음 {len(chunks)}개", flush=True)
 
     t = time.time()

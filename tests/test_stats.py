@@ -1,6 +1,7 @@
 """신뢰구간·유의성 검정(evals/stats.py)과 비교 CLI."""
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -39,6 +40,33 @@ def test_paired_ignores_unscored_and_checks_length():
     assert r["n"] == 3 and r["a_only"] == 1 and r["b_only"] == 1 and r["diff"] == 0
     with pytest.raises(ValueError):
         paired_diff("10", "101")
+
+
+def test_paired_interval_covers_95_percent_even_with_few_items():
+    """짝 차이 구간의 실제 포함률을 삼항분포로 정확히 센다 (난수 없음). 보정하지 않은 Wald 구간은
+    30문항 · 엇갈림이 드문 경우 70%까지 떨어지고, 엇갈린 문항이 없으면 폭이 0이 된다."""
+    from evals.stats import paired_ci
+
+    def coverage(n, p10, p01):
+        cov, lg = 0.0, math.lgamma
+        for a in range(n + 1):
+            for b in range(n + 1 - a):
+                lo, hi = paired_ci(a, b, n)
+                if lo <= p01 - p10 <= hi:
+                    cov += math.exp(lg(n + 1) - lg(a + 1) - lg(b + 1) - lg(n - a - b + 1) + a * math.log(p10)
+                                    + b * math.log(p01) + (n - a - b) * math.log(1 - p10 - p01))
+        return cov
+
+    for n in (30, 100):
+        for p10, p01 in ((0.01, 0.03), (0.02, 0.08), (0.05, 0.05), (0.15, 0.25)):
+            assert coverage(n, p10, p01) > 0.95, (n, p10, p01)
+    lo, hi = paired_ci(0, 0, 30)  # 두 모델이 30문항에 똑같이 답했다 — 차이 0이 '확정'은 아니다
+    assert lo == pytest.approx(-0.087, abs=0.001) and hi == pytest.approx(0.087, abs=0.001)
+    lo, hi = paired_ci(0, 1, 30)  # logs/sft_eval.json의 대화 평가: 베이스 → SFT 최종
+    assert lo == pytest.approx(-0.074, abs=0.001) and hi == pytest.approx(0.137, abs=0.001)
+    lo, hi = paired_ci(5, 30, 500)  # 표본이 크면 보정의 영향은 작다 (Wald: 2.7 ~ 7.3%p)
+    assert lo == pytest.approx(0.026, abs=0.001) and hi == pytest.approx(0.073, abs=0.001)
+    assert paired_ci(0, 4, 4)[1] <= 1.0 and paired_ci(4, 0, 4)[0] >= -1.0
 
 
 def test_half_width_and_known_case():
