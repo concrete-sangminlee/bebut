@@ -22,8 +22,11 @@ q/k 행 재배열이 필요하다 — export_hf.convert_state_dict를 그대로 
   llama-cli -m gguf/bebut-1.2b-sft.gguf -cnv              # llama.cpp 대화
   cd gguf && ollama create bebut -f Modelfile && ollama run bebut   # Ollama
 
---type: f32 | f16 | bf16 | q8_0. norm 같은 1차원 텐서는 항상 F32로 둔다(llama.cpp 관례 —
-작아서 아낄 게 없고 정밀도가 중요하다). Q8_0은 32개 값마다 fp16 스케일 하나 + int8 32개.
+--type: f32 | f16 | bf16 | q8_0 | q4_0. norm 같은 1차원 텐서는 항상 F32로 둔다(llama.cpp 관례 —
+작아서 아낄 게 없고 정밀도가 중요하다). Q8_0은 32개 값마다 fp16 스케일 하나 + int8 32개(값당
+8.5비트), Q4_0은 fp16 스케일 하나 + 4비트 32개(값당 4.5비트). q4_0에서도 토큰 임베딩은 Q8_0으로
+둔다 — 출력층과 가중치를 공유해서 양자화 오차가 logit에 바로 드러나는 텐서다(llama.cpp도 이
+텐서는 더 높은 정밀도로 남긴다). 1.2B 기준 f16 2.4GB · q8_0 1.28GB · q4_0 0.75GB.
 """
 
 import argparse
@@ -46,14 +49,15 @@ ALIGNMENT = 32
 _U32, _I32, _F32, _BOOL, _STR, _ARR = 4, 5, 6, 7, 8, 9
 
 # ggml 텐서 타입 (gguf.GGMLQuantizationType)과 general.file_type (gguf.LlamaFileType)
-GGML_F32, GGML_F16, GGML_Q8_0, GGML_BF16 = 0, 1, 8, 30
+GGML_F32, GGML_F16, GGML_Q4_0, GGML_Q8_0, GGML_BF16 = 0, 1, 2, 8, 30
 QTYPES = {  # --type → (2차원 텐서의 ggml 타입, general.file_type)
     "f32": (GGML_F32, 0),
     "f16": (GGML_F16, 1),
     "bf16": (GGML_BF16, 32),
     "q8_0": (GGML_Q8_0, 7),
+    "q4_0": (GGML_Q4_0, 2),
 }
-Q8_BLOCK = 32
+Q8_BLOCK = 32  # Q8_0 · Q4_0 모두 32개 값이 한 블록
 TOKEN_NORMAL, TOKEN_CONTROL, TOKEN_UNUSED = 1, 3, 5
 
 
@@ -151,11 +155,38 @@ def dequantize_q8_0(raw: bytes, shape) -> np.ndarray:
     return (blocks["qs"].astype(np.float32) * blocks["d"].astype(np.float32)[:, None]).reshape(shape)
 
 
-def _ggml_type_for(t: torch.Tensor, qtype: str) -> int:
+def quantize_q4_0(x: np.ndarray) -> bytes:
+    """llama.cpp의 quantize_row_q4_0_ref와 같은 규칙으로 Q4_0 블록을 만든다.
+
+    32개씩 묶어, 절댓값이 가장 큰 값 m(부호 포함)으로 d = m / −8을 잡고 q = trunc(x / d + 8.5)를
+    0~15로 자른다. 복원값은 d·(q − 8): m 쪽 끝은 정확히(−8칸), 반대쪽 끝은 7칸까지만 표현된다.
+    블록 = fp16 d(2바이트) + 4비트 32개(앞 16개가 아래 니블, 뒤 16개가 위 니블) = 18바이트.
+    """
+    x = np.ascontiguousarray(x, dtype=np.float32).reshape(-1, Q8_BLOCK)
+    m = np.take_along_axis(x, np.abs(x).argmax(axis=1)[:, None], axis=1)
+    d = m / np.float32(-8)
+    inv = np.divide(np.float32(1), d, out=np.zeros_like(d), where=d != 0)
+    q = np.trunc(x * inv + np.float32(8.5)).astype(np.uint8).clip(0, 15)
+    blocks = np.empty(len(x), dtype=[("d", "<f2"), ("qs", "u1", (Q8_BLOCK // 2,))])
+    blocks["d"] = d[:, 0].astype(np.float16)
+    blocks["qs"] = q[:, : Q8_BLOCK // 2] | (q[:, Q8_BLOCK // 2 :] << np.uint8(4))
+    return blocks.tobytes()
+
+
+def dequantize_q4_0(raw: bytes, shape) -> np.ndarray:
+    """검증용 역변환."""
+    blocks = np.frombuffer(raw, dtype=[("d", "<f2"), ("qs", "u1", (Q8_BLOCK // 2,))])
+    q = np.concatenate([blocks["qs"] & 0x0F, blocks["qs"] >> 4], axis=1).astype(np.int8) - 8
+    return (q.astype(np.float32) * blocks["d"].astype(np.float32)[:, None]).reshape(shape)
+
+
+def _ggml_type_for(t: torch.Tensor, qtype: str, name: str = "") -> int:
     if t.dim() < 2:
         return GGML_F32
     gtype = QTYPES[qtype][0]
-    if gtype == GGML_Q8_0 and t.shape[-1] % Q8_BLOCK:
+    if gtype == GGML_Q4_0 and name == "token_embd.weight":
+        gtype = GGML_Q8_0  # 출력층과 공유하는 임베딩은 한 단계 높은 정밀도로
+    if gtype in (GGML_Q8_0, GGML_Q4_0) and t.shape[-1] % Q8_BLOCK:
         return GGML_F16  # 행 길이가 32의 배수가 아니면 블록을 못 만든다
     return gtype
 
@@ -163,7 +194,8 @@ def _ggml_type_for(t: torch.Tensor, qtype: str) -> int:
 def _nbytes(t: torch.Tensor, gtype: int) -> int:
     n = t.numel()
     return {GGML_F32: 4 * n, GGML_F16: 2 * n, GGML_BF16: 2 * n,
-            GGML_Q8_0: n // Q8_BLOCK * (2 + Q8_BLOCK)}[gtype]
+            GGML_Q8_0: n // Q8_BLOCK * (2 + Q8_BLOCK),
+            GGML_Q4_0: n // Q8_BLOCK * (2 + Q8_BLOCK // 2)}[gtype]
 
 
 def _tensor_bytes(t: torch.Tensor, gtype: int) -> bytes:
@@ -176,6 +208,8 @@ def _tensor_bytes(t: torch.Tensor, gtype: int) -> bytes:
         return t.to(torch.bfloat16).view(torch.int16).numpy().astype("<i2", copy=False).tobytes()
     if gtype == GGML_Q8_0:
         return quantize_q8_0(t.float().numpy())
+    if gtype == GGML_Q4_0:
+        return quantize_q4_0(t.float().numpy())
     raise ValueError(gtype)
 
 
@@ -313,7 +347,7 @@ def write_gguf(path: str, metadata: dict, tensors: dict[str, torch.Tensor], qtyp
     """
     infos, offset = [], 0
     for name, t in tensors.items():
-        gtype = _ggml_type_for(t, qtype)
+        gtype = _ggml_type_for(t, qtype, name)
         infos.append((name, t, gtype, offset))
         offset += _nbytes(t, gtype)
         offset += -offset % ALIGNMENT

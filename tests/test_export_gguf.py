@@ -101,7 +101,7 @@ def test_metadata(exported, real_tok):
     assert _field(r, "qwen3.rope.freq_base") == pytest.approx(CFG.rope_theta)
     assert _field(r, "qwen3.attention.layer_norm_rms_epsilon") == pytest.approx(CFG.norm_eps)
     file_types = {q: _field(gguf.GGUFReader(p), "general.file_type") for q, p in exported.items()}
-    assert file_types == {"f32": 0, "f16": 1, "bf16": 32, "q8_0": 7}
+    assert file_types == {"f32": 0, "f16": 1, "bf16": 32, "q8_0": 7, "q4_0": 2}
 
 
 def test_vocab_arrays(exported, real_tok):
@@ -160,6 +160,44 @@ def test_q8_0_matches_reference_quantizer(exported, model):
         assert t.tensor_type == gguf.GGMLQuantizationType.Q8_0, t.name
         ref = gguf.quants.quantize(src, gguf.GGMLQuantizationType.Q8_0)
         assert np.asarray(t.data).tobytes() == ref.tobytes(), t.name
+
+
+def test_q4_0_matches_reference_quantizer(exported, model):
+    """Q4_0도 gguf-py의 참조 구현과 바이트까지 같다. 출력층과 공유하는 임베딩만 Q8_0으로 남긴다."""
+    r = gguf.GGUFReader(exported["q4_0"])
+    expected = _expected_tensors(model)
+    kinds = set()
+    for t in r.tensors:
+        src = expected[t.name].float().numpy()
+        if src.ndim == 1:
+            assert t.tensor_type == gguf.GGMLQuantizationType.F32
+            continue
+        want = (gguf.GGMLQuantizationType.Q8_0 if t.name == "token_embd.weight"
+                else gguf.GGMLQuantizationType.Q4_0)
+        assert t.tensor_type == want, t.name
+        assert np.asarray(t.data).tobytes() == gguf.quants.quantize(src, want).tobytes(), t.name
+        kinds.add(t.tensor_type.name)
+    assert kinds == {"Q4_0", "Q8_0"}
+    assert os.path.getsize(exported["q4_0"]) < os.path.getsize(exported["q8_0"])
+
+
+def test_q4_0_quantizer_edge_cases():
+    rng = np.random.default_rng(1)
+    for scale in (1e-3, 1.0, 1e3):
+        x = (rng.standard_normal((8, 96)) * scale).astype(np.float32)
+        x[0, :32] = 0.0                     # 전부 0인 블록
+        x[1, :32] = -np.abs(x[1, :32])      # 전부 음수 (최댓값이 음수 → d가 양수)
+        x[2, 5] = np.abs(x[2, :32]).max() * 4  # 한 값이 유난히 큰 블록 (나머지가 0 근처로 뭉개진다)
+        raw = export_gguf.quantize_q4_0(x)
+        assert raw == gguf.quants.quantize(x, gguf.GGMLQuantizationType.Q4_0).tobytes()
+        assert len(raw) == x.size // 32 * 18
+        deq = export_gguf.dequantize_q4_0(raw, x.shape)
+        assert np.array_equal(deq, gguf.quants.dequantize(
+            np.frombuffer(raw, dtype=np.uint8).reshape(-1, 18 * 3), gguf.GGMLQuantizationType.Q4_0))
+        d = np.abs(x.reshape(-1, 32)).max(1) / 8
+        # 한 칸(d) 이내: 대부분 반 칸, 최댓값 반대쪽 끝(−m 근처)만 7칸까지라 한 칸까지 벌어진다
+        assert (np.abs(deq - x).reshape(-1, 32).max(1) <= d * 1.01 + 1e-12).all()
+        assert np.all(deq[0, :32] == 0)
 
 
 def test_q8_0_quantizer_edge_cases():
@@ -294,7 +332,7 @@ def test_llama_cpp_needs_rope_permutation(llama_cpp, tmp_path, model, real_tok, 
 def test_llama_cpp_half_and_q8_0_are_close(llama_cpp, exported, model, real_tok):
     """F16/BF16/Q8_0은 반올림만큼 다르다. Q8_0은 llama.cpp가 활성값도 8비트로 바꿔 곱해서
     가장 크게 다르다 — 이 테스트의 가중치는 일부러 크게 흔든 것이라 실제 모델보다 오차가 크다."""
-    tol = {"f16": 0.02, "bf16": 0.15, "q8_0": 0.35}  # max|Δlogit| / std(logit)
+    tol = {"f16": 0.02, "bf16": 0.15, "q8_0": 0.35}  # max|Δlogit| / std(logit) — q4_0은 아래 따로
     for q, t in tol.items():
         llm = _llama(llama_cpp, exported[q])
         agree, greedy_ok = [], 0
@@ -308,6 +346,19 @@ def test_llama_cpp_half_and_q8_0_are_close(llama_cpp, exported, model, real_tok)
             greedy_ok += _llama_greedy(llm, ids, 8) == g
         assert np.mean(agree) > 0.7, (q, agree)
         assert greedy_ok >= (3 if q == "f16" else 1), (q, greedy_ok)
+
+
+def test_llama_cpp_q4_0_loads_and_tracks_fp32(llama_cpp, exported, model, real_tok):
+    """Q4_0 파일을 llama.cpp가 읽고, logit이 fp32 모델과 강하게 상관한다. 4비트라 오차는 Q8_0보다
+    크다 — 이 테스트의 가중치는 일부러 크게 흔든 것이라 실제 모델보다 불리한 조건이다."""
+    llm = _llama(llama_cpp, exported["q4_0"])
+    corr = []
+    for text in PROMPTS:
+        ids = real_tok.encode(text)
+        ref, lc = _full_logits(model, ids), _llama_logits(llm, ids)
+        assert np.isfinite(lc).all()
+        corr.append(np.corrcoef(lc.reshape(-1), ref.reshape(-1))[0, 1])
+    assert min(corr) > 0.8, corr
 
 
 def _tokenizer_corpus() -> list[str]:
