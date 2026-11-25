@@ -1,0 +1,48 @@
+{
+ "model": "Qwen/Qwen3-1.7B-Base",
+ "params": 1720574976,
+ "ctx": 256,
+ "chunks": 63,
+ "text": "FineWeb-2 ko test",
+ "results": {
+  "torch_fp32": {
+   "ppl": 11.241605878453841,
+   "nll": 2.419621706008911,
+   "tokens": 16065,
+   "seconds": 123
+  },
+  "f16": {
+   "ppl": 11.241544233845751,
+   "nll": 2.419616222381592,
+   "tokens": 16065,
+   "ppl_change_pct": -0.0005483612284251649,
+   "mean_abs_nll_diff": 0.0006758327945135534,
+   "top1_agreement": 0.9996265172735761,
+   "bytes": 3447181408,
+   "bits_per_weight": 16.028043908968254,
+   "seconds": 331
+  },
+  "q8_0": {
+   "ppl": 11.273443501302866,
+   "nll": 2.422449827194214,
+   "tokens": 16065,
+   "ppl_change_pct": 0.28321240927016156,
+   "mean_abs_nll_diff": 0.04754333570599556,
+   "top1_agreement": 0.9675070028011205,
+   "bytes": 1834258528,
+   "bits_per_weight": 8.528584007489366,
+   "seconds": 282
+  },
+  "q4_0": {
+   "ppl": 12.695460731228964,
+   "nll": 2.5412445068359375,
+   "tokens": 16065,
+   "ppl_change_pct": 12.93280398276233,
+   "mean_abs_nll_diff": 0.350671648979187,
+   "top1_agreement": 0.8039838157485216,
+   "bytes": 1129615456,
+   "bits_per_weight": 5.252269604088442,
+   "seconds": 231
+  }
+ }
+}
