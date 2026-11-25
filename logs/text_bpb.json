@@ -1,0 +1,71 @@
+{
+ "max_len": 1024,
+ "stride": 512,
+ "dtype": "fp32",
+ "text": {
+  "웹 (FineWeb-2 ko test)": {
+   "docs": 86,
+   "bytes": 304911,
+   "sha256": "056a656445f823e8",
+   "dropped_not_lossless": {}
+  }
+ },
+ "models": {
+  "Qwen/Qwen2.5-0.5B": {
+   "params": 494032768,
+   "domains": {
+    "웹 (FineWeb-2 ko test)": {
+     "bpb": 1.1177678814497776,
+     "bytes": 304911,
+     "tokens": 90636,
+     "docs": 86,
+     "bits_per_token": 3.7603129275424014,
+     "bytes_per_token": 3.364126837018403
+    }
+   },
+   "seconds": 475
+  },
+  "Qwen/Qwen2.5-1.5B": {
+   "params": 1543714304,
+   "domains": {
+    "웹 (FineWeb-2 ko test)": {
+     "bpb": 0.9374262714347479,
+     "bytes": 304911,
+     "tokens": 90636,
+     "docs": 86,
+     "bits_per_token": 3.1536208774597334,
+     "bytes_per_token": 3.364126837018403
+    }
+   },
+   "seconds": 1860
+  },
+  "EleutherAI/polyglot-ko-1.3b": {
+   "params": 1331810304,
+   "domains": {
+    "웹 (FineWeb-2 ko test)": {
+     "bpb": 0.9565168179868401,
+     "bytes": 304911,
+     "tokens": 69405,
+     "docs": 86,
+     "bits_per_token": 4.202182832493126,
+     "bytes_per_token": 4.393213745407391
+    }
+   },
+   "seconds": 987
+  },
+  "42dot/42dot_LLM-PLM-1.3B": {
+   "params": 1439270912,
+   "domains": {
+    "웹 (FineWeb-2 ko test)": {
+     "bpb": 0.6924339968297798,
+     "bytes": 304911,
+     "tokens": 64529,
+     "docs": 86,
+     "bits_per_token": 3.271873768497342,
+     "bytes_per_token": 4.725177827023509
+    }
+   },
+   "seconds": 550
+  }
+ }
+}

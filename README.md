@@ -31,7 +31,8 @@
 > 첫 단어에 붙어 토큰화되는데(`" 예"`), 경계를 문맥만 따로 토큰화한 길이로 잡았기 때문입니다.
 > 특히 **BoolQ는 모델을 측정한 적이 없습니다** — `"예"`는 채점 토큰이 0개였습니다.
 > 버그는 고쳤고(회귀 테스트 포함) 재측정은 체크포인트가 있는 서버에서
-> `python final_eval.py`, `python sft_eval.py`로 합니다.
+> `./remeasure.sh` 한 번으로 합니다 (`final_eval.py` · `sft_eval.py` 재실행 + 원문 기준 BPB +
+> 양자화 품질, 끝에 같은 문항끼리의 짝 비교까지).
 > 경위와 영향은 [docs/RESULTS.md §0](docs/RESULTS.md#0-채점-버그-정정-2026-11)에 있습니다.
 > perplexity와 대화 평가는 이 버그와 무관합니다.
 
@@ -54,6 +55,17 @@
 
 † 첫 토큰 누락 버그가 있는 채점기로 측정 — 재측정 전까지 참고값입니다.
 ‡ 1.2B 값은 held-out이 아닙니다. val 문서의 76%(위키·영어 Edu)를 annealing이 다시 학습했습니다. 완전한 held-out은 annealing 직전의 18.84까지입니다([RESULTS §2 정정](docs/RESULTS.md#2-annealing-효과-전체-문항-gpu-같은-조건--kobest-)).
+
+**이 표의 차이를 읽는 법.** 대화 평가는 30문항이라 베이스 66.7%와 SFT 최종 70.0%는 한 문항 차이이고
+(같은 문항 짝 비교 p=1.0), KOBEST의 SFT 전후 차이도 모두 p>0.7입니다 — SFT가 정답률을 올렸다는
+증거도, 깎았다는 증거도 없습니다. 멈춤·반복의 변화도 36문항 중 1~3문항 차이(p=0.25~1.0)라 방향만
+읽을 수 있습니다 (`python compare_evals.py logs/sft_eval.json --a 베이스 --b "SFT 최종"`,
+[RESULTS §3](docs/RESULTS.md)).
+
+**다른 모델과의 비교**는 토크나이저와 무관한 원문 기준 bits-per-byte로 합니다. 같은 한국어 웹
+글(FineWeb-2 test, 300KB)에서 공개 모델의 기준값은 42dot-PLM-1.3B 0.692 · Qwen2.5-1.5B 0.937 ·
+Polyglot-ko-1.3B 0.957 · Qwen2.5-0.5B 1.118이고, bebut은 같은 글로 서버에서 재야 합니다
+([RESULTS §9](docs/RESULTS.md#9-다른-모델과-같은-글로-비교--원문-기준-bits-per-byte)).
 
 유형별로는 **사실 100%, 지시 33%, 계산 0%**입니다. 자세한 수치와 해석은
 [docs/RESULTS.md](docs/RESULTS.md), 모델별 답변 전문은

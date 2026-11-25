@@ -137,12 +137,27 @@ def compare_chat(a: dict, b: dict) -> dict | None:
     return paired_diff(marks(a), marks(b))
 
 
+def compare_flags(a: dict, b: dict, key: str) -> dict | None:
+    """sft_eval 답변의 참/거짓 표시(stopped: 스스로 멈춤 · repetitive: 반복 루프) 두 개 → 짝 비교.
+    정답률과 달리 모든 문항을 쓴다 (sft_eval의 stop_rate · repeat_rate와 같은 분모)."""
+    rows = [r.get("answers") or [] for r in (a, b)]
+    if not rows[0] or not all(key in x for r in rows for x in r):
+        return None
+    c = paired_diff(*("".join(str(int(bool(x[key]))) for x in r) for r in rows))
+    c["unit"] = "해당"  # 출력에서 '맞힘' 대신 쓴다 — 정답이 아니라 그런 답이 나온 문항 수다
+    return c
+
+
 def compare_results(a: dict, b: dict, metric: str = "acc_calib") -> dict:
     """final_eval · sft_eval 결과의 한 모델분(dict) 둘 → {이름: 비교}. 양쪽에 다 있는 것만."""
     out = {}
     chat = compare_chat(a, b)
     if chat:
         out["대화"] = chat
+        for name, key in (("멈춤", "stopped"), ("반복", "repetitive")):
+            c = compare_flags(a, b, key)
+            if c:
+                out[name] = c
     for group in ("kobest", "bench"):
         for name in a.get(group) or {}:
             if name in (b.get(group) or {}):
@@ -151,7 +166,8 @@ def compare_results(a: dict, b: dict, metric: str = "acc_calib") -> dict:
 
 
 def format_comparison(name: str, c: dict) -> str:
-    kind = (f"짝 비교 n={c['n']}, A만 맞힘 {c['a_only']} · B만 맞힘 {c['b_only']}" if c["method"] == "paired"
+    unit = c.get("unit", "맞힘")
+    kind = (f"짝 비교 n={c['n']}, A만 {unit} {c['a_only']} · B만 {unit} {c['b_only']}" if c["method"] == "paired"
             else f"짝 없는 비교 n={c['n']} — 문항별 기록이 없어 구간이 넓다")
     verdict = "유의" if c["p"] < 0.05 else "잡음과 구분 안 됨"
     return (f"  {name:<10} {c['acc_a']*100:5.1f}% → {c['acc_b']*100:5.1f}%  차이 {c['diff']*100:+5.1f}%p  "

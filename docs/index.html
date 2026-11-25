@@ -269,6 +269,10 @@
         </table>
       </div>
       <p style="color:var(--text-dim); font-size:14px;">
+        대화 평가는 30~36문항이라 이 표의 SFT 전후 차이(정답률 1문항, 멈춤·반복 1~3문항)는 같은 문항 짝 비교에서
+        모두 잡음과 구분되지 않습니다(p=0.25~1.0) — 방향만 읽을 수 있습니다.
+        다른 모델과는 같은 한국어 웹 글의 bits-per-byte로 비교합니다: 공개 모델 기준값은 42dot-PLM-1.3B 0.692 ·
+        Qwen2.5-1.5B 0.937 · Polyglot-ko-1.3B 0.957이고, bebut은 같은 글로 서버에서 재야 합니다.
         유형별로는 <strong style="color:var(--text)">사실 100%, 지시 33%, 계산 0%</strong>입니다.
         자세한 수치와 해석은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>, 모델별 답변 전문은
         <a href="https://github.com/concrete-sangminlee/bebut/blob/main/logs/sft_eval_answers.md">sft_eval_answers.md</a>에 있습니다.

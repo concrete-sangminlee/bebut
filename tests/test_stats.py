@@ -119,3 +119,19 @@ def test_compare_cli_on_committed_logs(tmp_path):
                          capture_output=True, text=True, timeout=120, cwd=ROOT,
                          env={**os.environ, "PYTHONPATH": ROOT})
     assert bad.returncode != 0 and "없는 모델" in bad.stderr
+
+
+def test_chat_comparison_includes_stop_and_repetition():
+    """sft_eval 결과의 '스스로 멈춤' · '반복 루프'도 같은 문항끼리 짝 비교한다 (정답률과 달리 전 문항).
+    커밋된 logs/sft_eval.json에서 베이스 → SFT 최종은 멈춤 33 → 35, 반복 4 → 3 — 둘 다 잡음 수준이다."""
+    from tests.conftest import ROOT
+
+    res = json.load(open(os.path.join(ROOT, "logs", "sft_eval.json"), encoding="utf-8"))
+    c = compare_results(res["베이스"], res["SFT 최종"])
+    assert (c["멈춤"]["n"], c["멈춤"]["a_only"], c["멈춤"]["b_only"]) == (36, 1, 3) and c["멈춤"]["p"] > 0.5
+    assert (c["반복"]["a_only"], c["반복"]["b_only"]) == (2, 1) and c["반복"]["p"] == 1.0
+    assert c["대화"]["n"] == 30 and c["멈춤"]["unit"] == "해당"
+    c0 = compare_results(res["베이스"], res["SFT 에폭0"])
+    assert c0["멈춤"]["b_only"] == 3 and c0["멈춤"]["p"] == pytest.approx(0.25)
+    # 답변 기록이 없는 결과(final_eval)에는 생기지 않는다
+    assert "멈춤" not in compare_results({"kobest": {}}, {"kobest": {}})
