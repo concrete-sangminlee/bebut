@@ -189,11 +189,13 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
 - **서빙** — OpenAI 호환 HTTP 서버와 웹 UI를 표준 라이브러리로, 요청 사이 KV 캐시 재사용
   ([serve.py](serve.py), [web/](web/))
 - **내보내기** — safetensors·HF tokenizer.json ([export_hf.py](export_hf.py)), GGUF v3와
-  Q8_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현
+  Q8_0 · Q4_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현 (gguf-py 참조 구현과 바이트 단위로 같음)
 - **DPO** — 참조 모델 대비 선호 학습, 응답 위치만 청크 단위 lm_head ([dpo.py](dpo.py))
 - **평가** — perplexity·bits-per-byte, KOBEST·**KMMLU(45과목)·HAE-RAE Bench(6범주)**
   (바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화, 예측 쏠림 감지, 긴 문맥 왼쪽 자르기),
-  오염 검사 ([eval.py](eval.py), [evals/](evals/))
+  오염 검사, 원문 기준 BPB로 다른 모델과 비교 ([eval.py](eval.py), [evals/](evals/))
+- **통계** — Wilson 구간, 같은 문항끼리의 정확 McNemar 검정, 차이의 95% 구간을 표준 라이브러리로
+  ([evals/stats.py](evals/stats.py)). 평가 결과에 문항별 정오를 남겨 두 모델을 짝 비교한다
 
 ## 전체 재현 절차
 
@@ -224,9 +226,10 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 python final_eval.py --exclude-ids evals/contaminated_ids.json   # → logs/final_eval_v2.json
 python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
-# 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
+# 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다. 죽으면 --resume checkpoints/sft_1b/resume.pt
 python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
 python sft_eval.py
+python compare_evals.py logs/sft_eval.json --a 베이스 --b "SFT 최종"   # 차이가 표본 오차보다 큰가
 
 # 6.5) (선택) 산술 보완 SFT, DPO — 위 "다음 단계" 참고
 
@@ -245,24 +248,27 @@ python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-
 ```
 model.py                 트랜스포머 (RMSNorm/RoPE/GQA/QK-Norm/SwiGLU) + 청크 CE + KV 캐시·스트리밍 생성
 train.py                 사전학습 루프 (WSD, bf16, compile, annealing 전환, 원자적 체크포인트, --stop-after)
-sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, 길이별 묶음, --data JSONL)
+sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, 길이별 묶음, --data JSONL, --resume)
 chat.py                  대화 템플릿 단일 정의 (학습·추론·평가 공유) + 스트리밍 디코더
 sample.py                생성 / --chat 스트리밍 대화
 serve.py, web/           OpenAI 호환 API 서버 + 웹 채팅 UI (표준 라이브러리)
-dpo.py                   DPO 선호 학습 (참조 모델 고정, 응답 토큰 로그확률)
-export_hf.py             HuggingFace(Qwen3) 형식 내보내기
-export_gguf.py           GGUF(llama.cpp·Ollama) 내보내기 + Modelfile
+dpo.py                   DPO 선호 학습 (참조 모델 고정, 응답 토큰 로그확률, --resume)
+export_hf.py             HuggingFace(Qwen3) 형식 내보내기 (+ 반대 방향: Qwen3 가중치 읽기)
+export_gguf.py           GGUF(llama.cpp·Ollama) 내보내기 — F32 · F16 · Q8_0 · Q4_0 + Modelfile
 eval.py                  perplexity + KOBEST (선택지 경계 정확 채점, 비조건부 정규화, 예측 쏠림 감지)
 final_eval.py            사전학습 최종 평가 (annealing 전/후 비교)
 sft_eval.py              SFT 평가 (자체 문항 + KOBEST)
+compare_evals.py         평가 결과 두 개를 같은 문항끼리 짝 비교 (McNemar · 차이의 95% 구간)
 bench.py                 처리량·VRAM 벤치마크
+bench_infer.py           추론 속도 측정 (PyTorch fp32/bf16 · 프리픽스 캐시 · GGUF 타입별)
 test_model.py            모델 검증 6종
 tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT·DPO e2e, 서버, CLI, HF·GGUF 내보내기
 
 tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64K vocab
 data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더·산술 SFT 생성기
 configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
-evals/                   자체 평가 문항(대화 36 · 산술 200) + 벤치마크 오염 검사(n-gram)
+evals/                   자체 평가 문항(대화 36 · 산술 200) + 벤치마크 오염 검사(n-gram) + 통계(stats.py)
+                         + 원문 기준 bits-per-byte(text_bpb.py) + 양자화 품질(quant_quality.py)
 docs/                    결과 정리, 운영 가이드, 추론 가이드(실측), 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 ```

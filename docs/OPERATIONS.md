@@ -76,6 +76,27 @@ sleep 3; pkill -f train.py
 `pause_at_19200.sh`가 이 패턴의 실제 예입니다. **감시 스크립트를 먼저 종료**하는 것이
 중요합니다.
 
+## SFT · DPO를 끊었다 잇기
+
+SFT(1.2B, 약 5.5시간)와 DPO도 사전학습처럼 중간에서 이어집니다. `save_every` step마다, 에폭이
+끝날 때마다 출력 디렉터리에 `resume.pt`(가중치 + 옵티마이저 + 다음에 돌 위치)를 남깁니다.
+
+```bash
+python sft.py --config sft_1b --resume checkpoints/sft_1b/resume.pt      # 죽은 자리에서 잇기
+python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b --stop-after 3000   # 여기까지만 돌고 GPU 양보
+python dpo.py --config dpo_1b --data prefs.jsonl --resume checkpoints/dpo_1b/resume.pt
+```
+
+- 이어 붙인 학습의 가중치는 **중단 없이 돈 것과 비트 단위로 같습니다** (에폭 중간·에폭 경계
+  모두 `tests/test_sft.py`, `tests/test_dpo.py`가 검사). 배치 순서는 `(seed, epoch)`로만
+  정해지므로 위치만 저장하면 됩니다.
+- `--resume`에는 `--base`가 필요 없고, **데이터 인자(`--data`, `--extra-data`, `--limit`)와 설정은
+  처음과 똑같이** 줘야 합니다. `resume.pt`에 학습 설정과 토큰화된 데이터의 지문(sha256)이 들어
+  있어, 다르면 섞인 채 학습하는 대신 시작하지 않습니다 (`save_every`·`log_every`만 바꿀 수 있습니다).
+- DPO의 `resume.pt`에는 참조 로그확률도 들어 있어 다시 계산하지 않습니다.
+- `latest.pt`·`epoch{n}.pt`는 예전처럼 가중치만 담습니다(추론·평가용). 학습이 끝나면 `resume.pt`는
+  지웁니다 — 옵티마이저 상태까지 들어 있어 1.2B에서 14GB입니다.
+
 ## GPU를 공유할 때
 
 이 GPU는 다른 연구(vLLM 추론 서버 14GB, RAG 파이프라인 15.7GB)와 공유됩니다.
@@ -156,3 +177,5 @@ cat checkpoints/base_1b/milestones.csv                   # 벤치마크 이력
 | val loss가 ±0.1 출렁임 | 평가마다 다른 val 배치 | 매번 같은 val 배치 |
 | 같은 설정인데 실행마다 다른 모델 | 초기화 시드 없음 | `seed` 설정 |
 | KOBEST BoolQ가 한쪽으로만 답함 | 채점기가 선택지 첫 토큰을 빠뜨림 | 바이트 오프셋으로 경계 계산 (RESULTS.md §0) |
+| SFT가 중간에 죽으면 처음부터 다시 | `latest.pt`에 가중치만 있고 옵티마이저·위치가 없음 | `resume.pt` + `--resume` (비트 단위 재개 테스트) |
+| 150문항 점수 차이를 추세로 읽음 | 표본 오차(±8%p)보다 작은 차이 | 마일스톤 `--limit 500` + `compare_evals.py`의 짝 검정 |
