@@ -242,3 +242,27 @@ def test_cli_from_checkpoint(tmp_path):
     # bf16 반올림만큼의 차이는 허용 — 순열이 틀리면 훨씬 크게 벌어진다
     rel = (ours - theirs).abs().max() / ours.abs().max()
     assert rel < 0.05, rel
+
+
+# ---------------- 원문 BPB: 내보낸 모델이 같은 값을 내는가 ----------------
+
+
+def test_text_bpb_matches_between_checkpoint_and_export(tmp_path, bebut_tok):
+    """같은 글의 bits-per-byte가 이 저장소의 모델과 HF로 내보낸 모델에서 같다 — 토크나이저,
+    가중치, 채점(창 밀기)까지 한 번에 맞는지 본다. evals/text_bpb.py가 다른 HF 모델을 재는 경로다."""
+    from evals.text_bpb import BebutScorer, HFScorer, score_text
+
+    cfg = ModelConfig(vocab_size=bebut_tok.vocab_size, dim=32, n_layers=2, n_heads=2, n_kv_heads=1,
+                      max_seq_len=64)
+    torch.manual_seed(3)
+    model = GPT(cfg).eval()
+    export_hf.export(model.state_dict(), cfg, bebut_tok, str(tmp_path), "fp32", chat=False)
+    docs = ["대한민국은 동아시아의 한반도 남부에 있는 나라이다. 수도는 서울이고 인구는 약 5천만 명이다. " * 4,
+            "Quantum mechanics describes nature at the scale of atoms. 양자역학은 원자 규모의 자연을 다룬다.",
+            "짧은 글 🎉"]
+    ours = score_text(BebutScorer(model, bebut_tok), docs, max_len=48, stride=24)
+    hf = HFScorer(str(tmp_path), start_id=bebut_tok.special_tokens["<|eos|>"])
+    assert all(hf.lossless(d, hf.encode(d)) for d in docs)
+    theirs = score_text(hf, docs, max_len=48, stride=24)
+    assert theirs["tokens"] == ours["tokens"] and theirs["bytes"] == ours["bytes"]
+    assert theirs["bpb"] == pytest.approx(ours["bpb"], rel=1e-4)

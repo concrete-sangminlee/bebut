@@ -1,0 +1,86 @@
+"""원문 기준 bits-per-byte (evals/text_bpb.py): 모든 토큰을 한 번씩, 창 설정과 무관하게."""
+
+import math
+
+import pytest
+import torch
+import torch.nn.functional as F
+
+from evals.text_bpb import BebutScorer, lossless_docs, score_doc, score_text
+from tests.conftest import make_model
+
+DOCS = ["대한민국은 동아시아의 한반도 남부에 있는 나라이다. 수도는 서울이다.",
+        "The quick brown fox jumps over the lazy dog. 12,345원입니다.",
+        "짧은 글"]
+
+
+class BigramScorer:
+    """logits가 바로 앞 토큰에만 달린 가짜 모델 — 문맥을 어떻게 자르든 결과가 같아야 한다."""
+
+    name, max_len, params = "bigram", 1 << 30, 0
+
+    def __init__(self, vocab=50, seed=0):
+        self.table = torch.randn(vocab, vocab, generator=torch.Generator().manual_seed(seed))
+        self.start_id, self.calls = 0, []
+
+    def encode(self, text):
+        return [1 + (b % 49) for b in text.encode("utf-8")]
+
+    def lossless(self, text, ids):
+        return "깨짐" not in text
+
+    def logits(self, ids):
+        self.calls.append(len(ids))
+        return self.table[torch.tensor(ids)]
+
+
+def brute_force(scorer, ids):
+    seq = [scorer.start_id] + ids
+    lp = F.log_softmax(scorer.table[torch.tensor(seq[:-1])], dim=-1)
+    return -float(lp.gather(1, torch.tensor(seq[1:])[:, None]).sum())
+
+
+def test_every_token_scored_once_whatever_the_window():
+    s = BigramScorer()
+    ids = s.encode("가나다라마바사아자차카타파하" * 9)  # 378토큰
+    want = brute_force(s, ids)
+    for max_len, stride in ((1000, 500), (64, 32), (64, 63), (64, 1), (17, 5), (2, 1)):
+        nats, n = score_doc(s, ids, max_len, stride)
+        assert n == len(ids) and nats == pytest.approx(want, rel=1e-5), (max_len, stride)
+    s.calls.clear()
+    score_doc(s, ids, 64, 32)
+    assert max(s.calls) <= 64  # 창을 넘겨 모델에 넣지 않는다
+    with pytest.raises(ValueError):
+        score_text(s, DOCS, max_len=64, stride=64)
+
+
+def test_bpb_is_bits_over_utf8_bytes_and_lossy_docs_are_dropped():
+    s = BigramScorer()
+    r = score_text(s, DOCS, max_len=32, stride=16)
+    bits = sum(brute_force(s, s.encode(d)) for d in DOCS) / math.log(2)
+    nbytes = sum(len(d.encode("utf-8")) for d in DOCS)
+    assert r["bytes"] == nbytes and r["bpb"] == pytest.approx(bits / nbytes, rel=1e-5)
+    assert r["tokens"] == nbytes and r["bytes_per_token"] == 1.0  # 이 가짜 토크나이저는 바이트당 한 토큰
+    keep, dropped = lossless_docs([s], DOCS + ["깨짐 문서"])
+    assert keep == DOCS and dropped == {"bigram": 1}
+
+
+def test_bebut_scorer_matches_direct_forward(tiny_tok):
+    """한 창에 들어가는 문서는 모델을 한 번 돌린 cross-entropy 합과 같다. 긴 문서는 창을 밀며 잰다."""
+    torch.manual_seed(0)
+    model = make_model(vocab_size=1024, max_seq_len=64)
+    s = BebutScorer(model, tiny_tok)
+    ids = tiny_tok.encode(DOCS[0])
+    assert 1 < len(ids) < 60
+    seq = torch.tensor([[s.start_id] + ids])
+    with torch.no_grad():
+        logits = model.lm_head(model.hidden_states(seq[:, :-1]))[0]
+    want = float(F.cross_entropy(logits.float(), seq[0, 1:], reduction="sum"))
+    nats, n = score_doc(s, ids, 64, 32)
+    assert n == len(ids) and nats == pytest.approx(want, rel=1e-5)
+    long_ids = tiny_tok.encode(" ".join(DOCS) * 6)
+    assert len(long_ids) > 64
+    nats, n = score_doc(s, long_ids, 64, 32)  # 문맥(64)을 넘는 문서도 죽지 않고 전부 채점
+    assert n == len(long_ids) and math.isfinite(nats)
+    r = score_text(s, DOCS, max_len=1024, stride=512)  # max_len은 모델 문맥(64)으로 줄어든다
+    assert r["docs"] == 3 and 0 < r["bpb"] < 40
