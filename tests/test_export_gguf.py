@@ -489,10 +489,13 @@ def test_quant_quality_cli_on_tiny_checkpoint(llama_cpp, tmp_path, real_tok, mon
     monkeypatch.setattr(tokenizer.compare, "_stream", lambda *a, **k: [text, text[::2]])
     out = tmp_path / "q.json"
     monkeypatch.setattr(sys, "argv", ["quant_quality", "--ckpt", str(tmp_path / "m.pt"), "--ctx", "32",
-                                      "--max-chunks", "6", "--threads", "2", "--out", str(out)])
+                                      "--max-chunks", "6", "--threads", "2", "--llama-types", "q4_k_m",
+                                      "--out", str(out)])
     quant_quality.main()
     res = json.load(open(out, encoding="utf-8"))["results"]
-    assert set(res) == {"torch_fp32", "f16", "q8_0", "q4_0"} and res["torch_fp32"]["tokens"] == 6 * 31
+    assert set(res) == {"torch_fp32", "f16", "q8_0", "q4_0", "llama:q4_k_m"} and res["torch_fp32"]["tokens"] == 6 * 31
+    # llama.cpp 자체 양자화기로 만든 K-양자화도 같은 묶음으로 잰다 (F16보다 작고, 기준에서 조금 벗어난다)
+    assert res["llama:q4_k_m"]["bytes"] < res["q8_0"]["bytes"] and res["llama:q4_k_m"]["mean_abs_nll_diff"] > 0
     assert res["f16"]["mean_abs_nll_diff"] < res["q8_0"]["mean_abs_nll_diff"] < res["q4_0"]["mean_abs_nll_diff"]
     assert res["f16"]["top1_agreement"] > 0.9 and abs(res["f16"]["ppl_change_pct"]) < 1.0
     assert res["q4_0"]["bytes"] < res["q8_0"]["bytes"] < res["f16"]["bytes"]

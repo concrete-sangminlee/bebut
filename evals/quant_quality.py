@@ -12,14 +12,18 @@ llama.cpp로 같은 글의 perplexity를 잰다. bebut 1.2B와 구조·크기가
   f16 등    llama.cpp로 읽은 GGUF (KV 캐시는 fp32). ppl, 기준 대비 변화율, 토큰별 손실 차이의 평균
             절댓값, 1순위 예측이 기준과 같은 비율
 
+--llama-types를 주면, 이 저장소가 구현하지 않은 형식(K-양자화 등)을 llama.cpp 자체 양자화기로
+F16 파일에서 만들어 같은 방법으로 잰다 — "4비트가 필요하면 무엇을 쓸까"의 근거로.
+
 llama-cpp-python · transformers · safetensors가 필요하다 (저장소 의존성이 아니라 이 측정에만 쓴다).
 
 사용:
-  python -m evals.quant_quality --out logs/quant_quality.json                 # Qwen3-1.7B-Base, 약 30분
+  python -m evals.quant_quality --llama-types q4_k_m q5_k_m q6_k --out logs/quant_quality.json  # Qwen3-1.7B-Base
   python -m evals.quant_quality --ckpt checkpoints/sft_1b/latest.pt --out ... # bebut 체크포인트
 """
 
 import argparse
+import ctypes
 import gc
 import importlib
 import json
@@ -87,6 +91,18 @@ def llama_scores(path, chunks, ctx, threads):
     return np.concatenate(nll), np.concatenate(top1)
 
 
+def llama_quantize(src, dst, ftype, threads):
+    """llama.cpp 자체 양자화기로 GGUF(src, F16)를 ftype(예: "q4_k_m")으로 다시 양자화해 dst에 쓴다."""
+    import llama_cpp
+
+    params = llama_cpp.llama_model_quantize_default_params()
+    params.ftype = getattr(llama_cpp, f"LLAMA_FTYPE_MOSTLY_{ftype.upper()}")
+    params.nthread = threads
+    if llama_cpp.llama_model_quantize(src.encode(), dst.encode(), ctypes.byref(params)) != 0:
+        raise RuntimeError(f"llama.cpp 양자화 실패: {ftype}")
+    return dst
+
+
 def load_hf_model(repo, max_seq_len):
     """HF Qwen3 모델 → (이 저장소의 GPT[fp32], 토큰화 함수)."""
     from huggingface_hub import hf_hub_download
@@ -114,6 +130,9 @@ def main():
     ap.add_argument("--ckpt", default=None, help="bebut 체크포인트 (주면 --hf 대신 이것을 잰다)")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--types", nargs="+", choices=[t for t in QTYPES if t != "f32"], default=["f16", "q8_0", "q4_0"])
+    ap.add_argument("--llama-types", nargs="*", default=[],
+                    help="llama.cpp 양자화기로 F16에서 만들어 함께 잴 형식 (예: q4_k_m q5_k_m q6_k) — 결과에 "
+                         "'llama:<형식>'으로 남는다")
     ap.add_argument("--kb", type=float, default=60, help="글의 양 (KB, FineWeb-2 ko test split 앞부분)")
     ap.add_argument("--ctx", type=int, default=256, help="묶음 하나의 토큰 수")
     ap.add_argument("--max-chunks", type=int, default=None)
@@ -155,22 +174,26 @@ def main():
     sd = model.state_dict()
     with tempfile.TemporaryDirectory(dir=os.environ.get("BEBUT_TMPDIR")) as d:
         paths = {}
-        for q in args.types:  # 모델이 메모리에 있을 때 다 내보내고, llama.cpp를 올리기 전에 지운다
+        exports = list(args.types) + (["f16"] if args.llama_types and "f16" not in args.types else [])
+        for q in exports:  # 모델이 메모리에 있을 때 다 내보내고, llama.cpp를 올리기 전에 지운다
             paths[q] = os.path.join(d, f"m_{q}.gguf")
             export_gguf(sd, cfg, bebut_tok, paths[q], q, chat=False, name="quant-quality", write_modelfile=False)
         del sd, model
         gc.collect()
-        for q in args.types:
+        jobs = [(q, q) for q in args.types] + [(f"llama:{q}", q) for q in args.llama_types]
+        for label, q in jobs:
             t = time.time()
-            nll, top1 = llama_scores(paths[q], chunks, args.ctx, args.threads)
-            results[q] = {**summarize(nll, top1, ref_nll, ref_top1), "bytes": os.path.getsize(paths[q]),
-                          "bits_per_weight": 8 * os.path.getsize(paths[q]) / params,
-                          "seconds": round(time.time() - t)}
-            r = results[q]
-            print(f"{q:>5}: {r['bytes'] / 1e9:.2f}GB | ppl {r['ppl']:.3f} ({r['ppl_change_pct']:+.2f}%) | "
+            if label.startswith("llama:"):
+                paths[label] = llama_quantize(paths["f16"], os.path.join(d, f"llama_{q}.gguf"), q, args.threads)
+            nll, top1 = llama_scores(paths[label], chunks, args.ctx, args.threads)
+            results[label] = r = {**summarize(nll, top1, ref_nll, ref_top1), "bytes": os.path.getsize(paths[label]),
+                                  "bits_per_weight": 8 * os.path.getsize(paths[label]) / params,
+                                  "seconds": round(time.time() - t)}
+            print(f"{label:>12}: {r['bytes'] / 1e9:.2f}GB | ppl {r['ppl']:.3f} ({r['ppl_change_pct']:+.2f}%) | "
                   f"토큰별 손실 차이 {r['mean_abs_nll_diff']:.4f} | 1순위 일치 {r['top1_agreement'] * 100:.1f}%",
                   flush=True)
-            os.remove(paths[q])
+            if label != "f16" or not args.llama_types:  # F16은 llama.cpp 양자화의 원본으로 남겨 둔다
+                os.remove(paths[label])
 
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
