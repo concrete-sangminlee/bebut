@@ -97,18 +97,20 @@ python serve.py --ckpt checkpoints/sft_1b/latest.pt
 # HuggingFace 형식(Qwen3ForCausalLM 호환)으로 내보내기 → transformers · vLLM
 python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
 
-# GGUF로 내보내기 → llama.cpp · Ollama · LM Studio (Q8_0이면 1.2B가 1.27GB)
+# GGUF로 내보내기 → llama.cpp · Ollama · LM Studio (Q8_0이면 1.2B가 1.28GB)
 python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-sft.gguf --type q8_0
 cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 ```
 
-**CPU에서는 GGUF Q8_0 + llama.cpp가 가장 빠릅니다** — 1.2B 실측(4코어) 16.4 tok/s로 PyTorch fp32
-(8.2)의 2.0배입니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.1 tok/s)을 씁니다.
+**CPU에서는 GGUF Q8_0 + llama.cpp를 권합니다** — 1.2B 실측(4코어) 15.9 tok/s로 PyTorch fp32(8.3)의
+1.9배이고, 구조가 같은 학습된 공개 모델(Qwen3-1.7B)에서 잰 perplexity 손실이 0.3%입니다. 4비트 Q4_0은
+18.8 tok/s로 더 빠르지만 같은 측정에서 perplexity가 13% 올랐습니다 — 작은 모델에서 4비트는 공짜가
+아닙니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.4 tok/s)을 씁니다.
 측정 전체와 권장 구성은 [docs/INFERENCE.md](docs/INFERENCE.md)에 있습니다.
 
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). 기록이 문맥 창을 채운
+(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 1.39초 → 0.23초). 기록이 문맥 창을 채운
 뒤에는 오래된 턴을 user 턴 경계에서, 창의 1/4 단위로 묶어 버립니다. 그래서 자르는 자리가 몇
 턴씩 유지되고 그동안 캐시가 계속 재사용됩니다(80턴 모의 대화에서 창이 찬 뒤 턴당 새로 계산하는
 토큰 1,720 → 276). fp32에선 출력이

@@ -26,7 +26,11 @@ q/k 행 재배열이 필요하다 — export_hf.convert_state_dict를 그대로 
 작아서 아낄 게 없고 정밀도가 중요하다). Q8_0은 32개 값마다 fp16 스케일 하나 + int8 32개(값당
 8.5비트), Q4_0은 fp16 스케일 하나 + 4비트 32개(값당 4.5비트). q4_0에서도 토큰 임베딩은 Q8_0으로
 둔다 — 출력층과 가중치를 공유해서 양자화 오차가 logit에 바로 드러나는 텐서다(llama.cpp도 이
-텐서는 더 높은 정밀도로 남긴다). 1.2B 기준 f16 2.4GB · q8_0 1.28GB · q4_0 0.75GB.
+텐서는 더 높은 정밀도로 남긴다). 1.2B 기준 f16 2.4GB · q8_0 1.28GB · q4_0 0.74GB.
+
+품질: 구조가 같은 학습된 1.7B 모델에서 잰 perplexity 변화는 f16 ±0.00% · q8_0 +0.28% · q4_0 +12.9%
+(docs/INFERENCE.md, evals/quant_quality.py). 기본 권장은 q8_0이고, 더 작은 파일이 필요하면 f16으로
+내보낸 뒤 llama.cpp의 llama-quantize로 K-양자화(Q6_K · Q5_K_M)를 만드는 편이 q4_0보다 낫다.
 """
 
 import argparse
