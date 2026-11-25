@@ -93,7 +93,7 @@ sleep 3; pkill -f train.py
 
 ```bash
 CUDA_VISIBLE_DEVICES="" python gen_samples.py                    # 샘플 생성
-CUDA_VISIBLE_DEVICES="" python eval_milestones.py --config base_1b --limit 150 --shots 2
+CUDA_VISIBLE_DEVICES="" python eval_milestones.py --config base_1b --limit 500 --shots 2
 ```
 
 1.2B 모델 기준 CPU forward는 컨텍스트 1,024토큰에 약 2초입니다. KOBEST 전체 문항은

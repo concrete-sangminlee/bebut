@@ -4,13 +4,16 @@
 # 부른다 — 예전엔 스냅샷 수와 milestones.csv 행 수를 비교해서, 중복 행이 한 번 생기면 새
 # 스냅샷을 영영 감지하지 못했다. CPU 전용이라 GPU 학습과 무관.
 #
+# 과제당 500문항: 150문항(95% 구간 ±8%p)으로는 단계 사이의 변화를 읽을 수 없었다 (RESULTS §1).
+# 500문항이면 ±4.4%p. 1.2B · CPU 16스레드에서 스냅샷 하나에 1시간 남짓 걸린다.
+#
 # 사용: ./watch_milestones.sh [config]
 cd "$(dirname "$0")"   # 저장소 위치에 의존하지 않는다
 CONFIG="${1:-base_1b}"
 while true; do
   if ls "checkpoints/$CONFIG"/step_*.pt > /dev/null 2>&1; then
     echo "[$(date +%F\ %T)] 스냅샷 확인"
-    EVAL_THREADS=16 .venv/bin/python eval_milestones.py --config "$CONFIG" --limit 150 --shots 2 \
+    EVAL_THREADS=16 .venv/bin/python eval_milestones.py --config "$CONFIG" --limit 500 --shots 2 \
       >> milestones.log 2>&1
   fi
   sleep 3600

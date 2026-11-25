@@ -24,6 +24,7 @@ import torch
 
 from data.dataloader import ShardedDataLoader
 from eval import BENCHMARKS, load_exclude, bits_per_byte, perplexity, run_benchmarks
+from evals.stats import print_comparisons
 from sample import load_model, pick_device
 
 # annealing 직전: 지금의 train.py는 전환 직전 step(19,199)을 자동으로 스냅샷한다. 1.2B 원래 실행은
@@ -100,6 +101,7 @@ def main():
         if device == "cuda":
             torch.cuda.empty_cache()
 
+    print_comparisons(results)  # 체크포인트 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
     print(f"\n저장: {args.out}", flush=True)

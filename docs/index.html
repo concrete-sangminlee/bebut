@@ -385,7 +385,7 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
         <li><strong>계산 불가</strong> — 12+7을 14라고 답합니다. 풀이를 보여주는 합성 산술 데이터로 보완하는 실험을 준비해 뒀습니다(효과 미측정).</li>
         <li><strong>드문 사실은 지어냅니다</strong> — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.</li>
         <li><strong>BoolQ는 미확인</strong> — 한쪽으로 쏠린 무작위 수준으로 기록했지만 채점 버그로 설명됩니다. 재측정이 필요합니다.</li>
-        <li><strong>annealing의 부작용(재확인 필요)</strong> — 고품질 데이터 전환으로 perplexity가 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가) HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 이 비교도 버그 있는 채점기로 잰 값입니다.</li>
+        <li><strong>annealing의 부작용(재확인 필요)</strong> — 고품질 데이터 전환으로 perplexity가 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가) HellaSwag은 46.2% → 40.0%로 떨어졌습니다(p=0.048로 경계선). 이 비교도 버그 있는 채점기로 잰 값입니다.</li>
         <li><strong>SFT 데이터 오염</strong> — annealing에 SFT와 같은 데이터를 넣어 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.</li>
       </ul>
       <p>자세한 내용과 과정에서 배운 것은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>에 정리했습니다.</p>

@@ -24,6 +24,7 @@ import torch
 import torch.nn.functional as F
 
 from data.dataloader import ShardedDataLoader
+from evals.stats import wilson_ci
 from sample import load_model, pick_device
 
 
@@ -192,18 +193,6 @@ def format_hellaswag(row):
 FORMATTERS = {"copa": format_copa, "boolq": format_boolq, "hellaswag": format_hellaswag}
 
 
-def wilson_ci(k: int, n: int, z: float = 1.96) -> list[float]:
-    """정답 k / n의 95% Wilson 신뢰구간 [lo, hi]. 문항이 적을수록 넓다 — 대화 평가 30문항이면
-    70%의 구간이 대략 52~83%라, 한두 문제 차이는 구분되지 않는다."""
-    if n == 0:
-        return [0.0, 1.0]
-    p = k / n
-    d = 1 + z * z / n
-    c = (p + z * z / (2 * n)) / d
-    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
-    return [round(max(0.0, c - h), 4), round(min(1.0, c + h), 4)]
-
-
 def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip=None):
     """다지선다 채점. 세 가지 점수를 한 번에 낸다.
 
@@ -217,6 +206,9 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
     acc_calib  비조건부 정규화 (normalized_score) — 이 저장소의 기본 지표
 
     예측 분포도 지표별로 센다. 한쪽으로 쏠리면 정확도는 라벨 분포일 뿐이다.
+
+    items: 지표별 문항 정오 문자열 — test 행 순서대로 '1' 맞힘 · '0' 틀림 · 'x' 오염 제외 ·
+    '-' 채점 불가. 두 모델을 같은 문항으로 짝 비교(evals/stats.py, compare_evals.py)하는 데 쓴다.
     """
     prefix = ""
     for i in range(shots):  # few-shot 예시는 train 앞쪽에서 고정 (재현성)
@@ -230,11 +222,14 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
     preds = {n: {} for n in names}
     total = excluded = degenerate = 0
     ex_correct = dict.fromkeys(names, 0)
+    items = {n: [] for n in names}
     for i, row in enumerate(test_rows):
         held_out = bool(skip) and i in skip
         ctx, choices, label = fmt(row)
         if len(set(choices)) == 1:  # 보기가 전부 같은 문항(KMMLU의 '보기없음'·'복원중' 등) — 채점 불가
             degenerate += 1
+            for n in names:
+                items[n].append("-")
             continue
         cond = score_continuations(model, tok, [(prefix + ctx, c) for c in choices], device, stats)
         todo = [c for c in dict.fromkeys(choices) if c not in uncond_cache]
@@ -252,6 +247,7 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
             # 같은 보기가 두 번 나오면 점수도 같아 앞쪽이 뽑힌다 — 정답이 뒤쪽 사본이어도 맞힌 것으로
             # (예전엔 이런 KMMLU 문항 7개는 모델이 아무리 좋아도 틀렸다)
             hit = int(choices[p] == choices[label])
+            items[n].append("x" if held_out else str(hit))
             if held_out:
                 ex_correct[n] += hit
                 continue
@@ -263,6 +259,7 @@ def evaluate_choices(model, tok, fmt, train_rows, test_rows, shots, device, skip
             "ci95": {n: wilson_ci(correct[n], total) for n in names},
             "preds": {n: dict(sorted(v.items())) for n, v in preds.items()},
             "truncated": stats["truncated"], "excluded": excluded, "degenerate": degenerate,
+            "items": {n: "".join(v) for n, v in items.items()},
             "excluded_acc": {n: ex_correct[n] / excluded for n in names} if excluded else None}
 
 
@@ -328,7 +325,8 @@ def _aggregate(per):
     for k in names:
         out[f"macro_{k}"] = sum(r[k] for r in per.values()) / max(1, len(per))
     out["by_config"] = {c: {**{k: r[k] for k in ("n", *names, "truncated")},
-                           "excluded": r.get("excluded", 0)} for c, r in per.items()}
+                           "excluded": r.get("excluded", 0),
+                           **({"items": r["items"]} if "items" in r else {})} for c, r in per.items()}
     # 지표별 예측 분포 합계 — mc 형식에서 "늘 A" 같은 문자 쏠림을 잡으려면 꼭 있어야 한다
     out["preds"] = {k: {} for k in names}
     for r in per.values():

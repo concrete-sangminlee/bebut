@@ -173,8 +173,10 @@ def test_tie_on_duplicate_option_counts_as_correct(monkeypatch):
 
 
 def test_wilson_interval():
-    assert ev.wilson_ci(0, 0) == [0.0, 1.0]
-    lo, hi = ev.wilson_ci(21, 30)  # 대화 평가 크기 — 70%가 대략 52~83%
+    from evals.stats import wilson_ci
+
+    assert wilson_ci(0, 0) == [0.0, 1.0]
+    lo, hi = wilson_ci(21, 30)  # 대화 평가 크기 — 70%가 대략 52~83%
     assert 0.5 < lo < 0.55 and 0.82 < hi < 0.85
-    lo, hi = ev.wilson_ci(7000, 10000)  # 문항이 많으면 좁다
+    lo, hi = wilson_ci(7000, 10000)  # 문항이 많으면 좁다
     assert hi - lo < 0.02 and lo < 0.7 < hi
