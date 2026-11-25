@@ -181,6 +181,21 @@ def test_q4_0_matches_reference_quantizer(exported, model):
     assert os.path.getsize(exported["q4_0"]) < os.path.getsize(exported["q8_0"])
 
 
+def test_quantization_in_chunks_is_byte_identical(monkeypatch):
+    """큰 텐서는 잘라서 양자화한다(중간 배열이 텐서의 예닐곱 배라 통째로 하면 메모리가 모자란다).
+    블록끼리 독립이므로 어떻게 자르든 통째로 한 것과 바이트 단위로 같아야 한다."""
+    torch.manual_seed(0)
+    for dtype in (torch.float32, torch.bfloat16):  # bf16 가중치(공개 모델)도 조각마다 fp32로 바꿔 양자화한다
+        t = (torch.randn(40, 96) * 3).to(dtype)
+        for gtype, fn in ((export_gguf.GGML_Q8_0, export_gguf.quantize_q8_0),
+                          (export_gguf.GGML_Q4_0, export_gguf.quantize_q4_0)):
+            whole = fn(t.float().numpy())
+            for chunk in (32, 96, 1024, 1 << 22):  # 블록 하나 · 한 행 · 여러 행 · 텐서보다 큰 조각
+                monkeypatch.setattr(export_gguf, "QUANT_CHUNK", chunk)
+                assert export_gguf._tensor_bytes(t, gtype) == whole, (dtype, gtype, chunk)
+    assert export_gguf.QUANT_CHUNK % export_gguf.Q8_BLOCK == 0
+
+
 def test_q4_0_quantizer_edge_cases():
     rng = np.random.default_rng(1)
     for scale in (1e-3, 1.0, 1e3):

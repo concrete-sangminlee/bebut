@@ -1,0 +1,53 @@
+{
+ "config": "base_1b",
+ "env": {
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.30GHz",
+  "cores": 4,
+  "threads": 4,
+  "torch": "2.15.0+cpu",
+  "python": "3.13.18",
+  "cpu_bf16": true,
+  "loadavg_at_start": 0.36
+ },
+ "reps": 3,
+ "note": "무작위 가중치, 값마다 중앙값. 디코드는 첫 토큰 이후 토큰당 속도",
+ "params": 1197580288,
+ "torch": {
+  "fp32_decode_tok_s": 8.34,
+  "bf16_decode_tok_s": 12.36
+ },
+ "ttft": {
+  "dtype": "bf16",
+  "history_tokens": 1000,
+  "question_tokens": 60,
+  "no_cache_s": 1.391,
+  "prefix_cache_s": 0.234
+ },
+ "sampler_ms": {
+  "greedy": 0.091,
+  "top_p_0.95_peaked": 0.756,
+  "top_p_0.95_flat": 6.329,
+  "top_p_1.0": 1.36
+ },
+ "window_reuse": {
+  "max_seq_len": 2048,
+  "max_tokens": 256,
+  "turns_measured": 59,
+  "recomputed_per_turn": 315,
+  "reused_per_turn": 1187
+ },
+ "gguf": {
+  "f16": {
+   "bytes": 2398683456,
+   "decode_tok_s": 14.28
+  },
+  "q8_0": {
+   "bytes": 1276051776,
+   "decode_tok_s": 15.88
+  },
+  "q4_0": {
+   "bytes": 744423744,
+   "decode_tok_s": 18.76
+  }
+ }
+}

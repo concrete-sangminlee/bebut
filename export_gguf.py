@@ -198,6 +198,19 @@ def _nbytes(t: torch.Tensor, gtype: int) -> int:
             GGML_Q4_0: n // Q8_BLOCK * (2 + Q8_BLOCK // 2)}[gtype]
 
 
+QUANT_CHUNK = 1 << 22  # 한 번에 양자화하는 값의 수 (블록 크기 32의 배수)
+
+
+def _quantize_chunked(t: torch.Tensor, quantize) -> bytes:
+    """텐서를 QUANT_CHUNK개씩 잘라 양자화해 이어 붙인다 (블록끼리 독립이라 결과는 통째로 한 것과 같다).
+
+    양자화는 중간 배열을 텐서 크기의 예닐곱 배 만든다. 통째로 하면 임베딩 하나(1.2B는 1.3억 값,
+    vocab 15만인 모델은 3억 값)에 3~8GB가 더 들어, 15GB 기계에서 1.7B 모델을 내보내다 죽었다."""
+    flat = t.reshape(-1)
+    return b"".join(quantize(flat[i : i + QUANT_CHUNK].float().numpy())
+                    for i in range(0, flat.numel(), QUANT_CHUNK))
+
+
 def _tensor_bytes(t: torch.Tensor, gtype: int) -> bytes:
     t = t.detach().contiguous().cpu()
     if gtype == GGML_F32:
@@ -207,9 +220,9 @@ def _tensor_bytes(t: torch.Tensor, gtype: int) -> bytes:
     if gtype == GGML_BF16:  # numpy엔 bf16이 없어 비트 그대로 int16으로 본다
         return t.to(torch.bfloat16).view(torch.int16).numpy().astype("<i2", copy=False).tobytes()
     if gtype == GGML_Q8_0:
-        return quantize_q8_0(t.float().numpy())
+        return _quantize_chunked(t, quantize_q8_0)
     if gtype == GGML_Q4_0:
-        return quantize_q4_0(t.float().numpy())
+        return _quantize_chunked(t, quantize_q4_0)
     raise ValueError(gtype)
 
 
