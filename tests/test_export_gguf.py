@@ -441,3 +441,56 @@ def test_cli_from_checkpoint(tmp_path, tiny_tok):
     ref = _full_logits(m.eval(), ids)  # 실제 초기화(std 0.02) 그대로인 모델도 Q8_0으로 맞는다
     lc = np.array(llm.scores[: len(ids)])
     assert np.isfinite(lc).all() and np.abs(lc - ref).max() < 0.05 * ref.std() + 1e-3
+
+
+# ---------------- 양자화 품질 측정 (evals/quant_quality.py) ----------------
+
+
+def test_quant_quality_helpers():
+    from evals.quant_quality import chunks_of, nll_and_top1, summarize
+
+    assert chunks_of(list(range(10)), 4) == [[0, 1, 2, 3], [4, 5, 6, 7]]  # 모자란 꼬리는 버린다
+    assert chunks_of(list(range(10)), 4, limit=1) == [[0, 1, 2, 3]]
+    logits = np.zeros((3, 5), dtype=np.float32)
+    logits[0, 2] = logits[1, 4] = 10.0  # 위치 0은 2를, 위치 1은 4를 예측
+    nll, top1 = nll_and_top1(logits, [0, 2, 3])
+    assert top1.tolist() == [2, 4] and nll[0] < 0.01 and nll[1] > 5  # 첫 토큰은 채점하지 않는다
+    same = summarize(nll, top1, nll, top1)
+    assert same["ppl_change_pct"] == 0 and same["top1_agreement"] == 1.0 and same["tokens"] == 2
+
+
+def test_quant_quality_cli_on_tiny_checkpoint(llama_cpp, tmp_path, real_tok, monkeypatch):
+    """--ckpt 경로를 끝까지: PyTorch fp32 기준과 llama.cpp로 읽은 F16 · Q8_0 · Q4_0을 같은 토큰으로 잰다.
+    F16은 기준과 사실상 같고, 비트를 줄일수록 기준에서 멀어진다."""
+    import sys
+
+    import tokenizer.compare
+    from configs.ci_eval import model as cfg
+    from evals import quant_quality
+
+    torch.manual_seed(0)
+    torch.save({"model": _random_gpt(cfg).state_dict(), "step": 1, "config": "ci_eval"}, tmp_path / "m.pt")
+    text = "대한민국은 동아시아의 한반도 남부에 있는 나라이다. 수도는 서울특별시이며 국화는 무궁화이다. " * 30
+    monkeypatch.setattr(tokenizer.compare, "_stream", lambda *a, **k: [text, text[::2]])
+    out = tmp_path / "q.json"
+    monkeypatch.setattr(sys, "argv", ["quant_quality", "--ckpt", str(tmp_path / "m.pt"), "--ctx", "32",
+                                      "--max-chunks", "6", "--threads", "2", "--out", str(out)])
+    quant_quality.main()
+    res = json.load(open(out, encoding="utf-8"))["results"]
+    assert set(res) == {"torch_fp32", "f16", "q8_0", "q4_0"} and res["torch_fp32"]["tokens"] == 6 * 31
+    assert res["f16"]["mean_abs_nll_diff"] < res["q8_0"]["mean_abs_nll_diff"] < res["q4_0"]["mean_abs_nll_diff"]
+    assert res["f16"]["top1_agreement"] > 0.9 and abs(res["f16"]["ppl_change_pct"]) < 1.0
+    assert res["q4_0"]["bytes"] < res["q8_0"]["bytes"] < res["f16"]["bytes"]
+
+
+def test_bench_infer_with_gguf(llama_cpp, tmp_path):
+    """추론 벤치의 GGUF 구간: 실제 토크나이저 vocab의 작은 모델을 타입별로 내보내 llama.cpp로 잰다."""
+    out = tmp_path / "bench.json"
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "bench_infer.py"), "--config", "ci_eval", "--reps", "1",
+                        "--threads", "2", "--history", "200", "--types", "f16", "q4_0", "--out", str(out)],
+                       capture_output=True, text=True, timeout=300, cwd=ROOT,
+                       env={**os.environ, "PYTHONPATH": ROOT})
+    assert r.returncode == 0, r.stderr[-2000:]
+    g = json.load(open(out, encoding="utf-8"))["gguf"]
+    assert set(g) == {"f16", "q4_0"} and g["q4_0"]["bytes"] < g["f16"]["bytes"]
+    assert all(v["decode_tok_s"] > 0 for v in g.values())
