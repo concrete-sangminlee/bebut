@@ -13,7 +13,7 @@
   문맥 창      창이 찬 뒤 턴마다 새로 계산하는 토큰 수 (대화 80턴 모의, 토크나이저만 쓴다)
 
 사용:
-  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 약 8GB, 15분
+  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 약 8GB, 4분
   python bench_infer.py --config mid_125m                                  # 작은 모델로 빠르게
 """
 
@@ -213,6 +213,13 @@ def main():
 
     with tempfile.TemporaryDirectory(dir=os.environ.get("BEBUT_TMPDIR")) as tmp:
         bench(args, cfg, history, res, tmp)
+    try:  # 이 프로세스가 가장 많이 쓴 메모리 (리눅스는 KB 단위, macOS는 바이트 단위)
+        import resource
+
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        res["peak_rss_gb"] = round(peak / (1e9 if platform.system() == "Darwin" else 1e6), 2)
+    except ImportError:  # Windows
+        pass
     if args.out:
         with open(args.out, "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False, indent=1)

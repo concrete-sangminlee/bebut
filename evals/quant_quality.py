@@ -15,6 +15,10 @@ llama.cpp로 같은 글의 perplexity를 잰다. bebut 1.2B와 구조·크기가
 --llama-types를 주면, 이 저장소가 구현하지 않은 형식(K-양자화 등)을 llama.cpp 자체 양자화기로
 F16 파일에서 만들어 같은 방법으로 잰다 — "4비트가 필요하면 무엇을 쓸까"의 근거로.
 
+--torch-check를 주면 교차 확인을 한다: 양자화했다가 되돌린 가중치를 PyTorch 모델에 넣어 같은
+묶음을 잰다. llama.cpp로 읽은 GGUF의 수치와 비슷하면 그 손실은 양자화 자체의 것이고, 크게 다르면
+내보내기나 추론 경로가 틀린 것이다 (결과의 torch_dequant · vs_torch_dequant).
+
 llama-cpp-python · transformers · safetensors가 필요하다 (저장소 의존성이 아니라 이 측정에만 쓴다).
 
 사용:
@@ -36,7 +40,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from export_gguf import QTYPES, export_gguf
+from export_gguf import (GGML_Q4_0, GGML_Q8_0, QTYPES, QUANT_CHUNK, _ggml_type_for, dequantize_q4_0,
+                         dequantize_q8_0, export_gguf, quantize_q4_0, quantize_q8_0)
 from export_hf import import_state_dict, model_config_from_hf
 from model import GPT
 from tokenizer.bpe import ByteBPETokenizer
@@ -73,6 +78,36 @@ def torch_reference(model, chunks):
         nll.append(a)
         top1.append(b)
     return np.concatenate(nll), np.concatenate(top1)
+
+
+@torch.no_grad()
+def torch_dequant_scores(model, chunks, types):
+    """교차 확인용: 타입마다 가중치를 '양자화 → 역양자화'한 값으로 바꿔 PyTorch로 잰다 → {타입: (nll, top1)}.
+
+    텐서별 형식은 GGUF에 쓸 때와 같은 함수(_ggml_type_for)로 정한다 (1차원 텐서는 그대로, Q4_0의
+    임베딩은 Q8_0). 끝나면 가중치를 원래대로 돌려놓는다. 메모리는 모델 + 원본 사본만큼 든다."""
+    codecs = {GGML_Q8_0: (quantize_q8_0, dequantize_q8_0), GGML_Q4_0: (quantize_q4_0, dequantize_q4_0)}
+    params = dict(model.named_parameters())
+    # 원본 보관: 공개 모델의 가중치는 bf16으로 저장돼 있어 bf16 사본이 정확하다(메모리 절반). 아니면 그대로 복사
+    orig = {k: (v.to(torch.bfloat16) if torch.equal(v.to(torch.bfloat16).float(), v) else v.clone())
+            for k, v in params.items()}
+    out = {}
+    for q in types:
+        for name, p in params.items():
+            gname = "token_embd.weight" if name in ("tok_emb.weight", "lm_head.weight") else name
+            g = _ggml_type_for(p, q, gname)
+            if g not in codecs:
+                p.copy_(orig[name])
+                continue
+            quantize, dequantize = codecs[g]
+            dst, src = p.view(-1), orig[name].reshape(-1)
+            for i in range(0, src.numel(), QUANT_CHUNK):  # 조각 단위로 — 통째로 하면 임베딩 하나에 수 GB가 든다
+                w = src[i : i + QUANT_CHUNK].float()
+                dst[i : i + w.numel()] = torch.from_numpy(dequantize(quantize(w.numpy()), (w.numel(),)))
+        out[q] = torch_reference(model, chunks)
+    for name, p in params.items():
+        p.copy_(orig[name])
+    return out
 
 
 def llama_scores(path, chunks, ctx, threads):
@@ -133,6 +168,8 @@ def main():
     ap.add_argument("--llama-types", nargs="*", default=[],
                     help="llama.cpp 양자화기로 F16에서 만들어 함께 잴 형식 (예: q4_k_m q5_k_m q6_k) — 결과에 "
                          "'llama:<형식>'으로 남는다")
+    ap.add_argument("--torch-check", action="store_true",
+                    help="교차 확인: 양자화→역양자화한 가중치를 PyTorch에 넣어 잰 값을 함께 남긴다 (q8_0 · q4_0)")
     ap.add_argument("--kb", type=float, default=60, help="글의 양 (KB, FineWeb-2 ko test split 앞부분)")
     ap.add_argument("--ctx", type=int, default=256, help="묶음 하나의 토큰 수")
     ap.add_argument("--max-chunks", type=int, default=None)
@@ -171,6 +208,15 @@ def main():
     results = {"torch_fp32": {**summarize(ref_nll, ref_top1), "seconds": round(time.time() - t)}}
     print(f"기준 (PyTorch fp32): ppl {results['torch_fp32']['ppl']:.3f}", flush=True)
 
+    check = {}
+    if args.torch_check:
+        t = time.time()
+        check = torch_dequant_scores(model, chunks, [q for q in args.types if q in ("q8_0", "q4_0")])
+        for q, (nll, top1) in check.items():
+            r = summarize(nll, top1, ref_nll, ref_top1)
+            print(f"교차 확인 (PyTorch, {q} 가중치): ppl {r['ppl']:.3f} ({r['ppl_change_pct']:+.2f}%)", flush=True)
+        print(f"  {time.time() - t:.0f}초", flush=True)
+
     sd = model.state_dict()
     with tempfile.TemporaryDirectory(dir=os.environ.get("BEBUT_TMPDIR")) as d:
         paths = {}
@@ -192,6 +238,13 @@ def main():
             print(f"{label:>12}: {r['bytes'] / 1e9:.2f}GB | ppl {r['ppl']:.3f} ({r['ppl_change_pct']:+.2f}%) | "
                   f"토큰별 손실 차이 {r['mean_abs_nll_diff']:.4f} | 1순위 일치 {r['top1_agreement'] * 100:.1f}%",
                   flush=True)
+            if label in check:  # 같은 양자화 가중치의 PyTorch 결과, 그리고 llama.cpp가 그것과 얼마나 같은가
+                r["torch_dequant"] = summarize(*check[label], ref_nll, ref_top1)
+                r["vs_torch_dequant"] = {"mean_abs_nll_diff": float(np.abs(nll - check[label][0]).mean()),
+                                         "top1_agreement": float((top1 == check[label][1]).mean())}
+                print(f"{'':>12}  PyTorch에 같은 가중치: ppl {r['torch_dequant']['ppl_change_pct']:+.2f}% | "
+                      f"llama.cpp와 토큰별 손실 차이 {r['vs_torch_dequant']['mean_abs_nll_diff']:.4f} · "
+                      f"1순위 일치 {r['vs_torch_dequant']['top1_agreement'] * 100:.1f}%", flush=True)
             if label != "f16" or not args.llama_types:  # F16은 llama.cpp 양자화의 원본으로 남겨 둔다
                 os.remove(paths[label])
 

@@ -490,9 +490,18 @@ def test_quant_quality_cli_on_tiny_checkpoint(llama_cpp, tmp_path, real_tok, mon
     out = tmp_path / "q.json"
     monkeypatch.setattr(sys, "argv", ["quant_quality", "--ckpt", str(tmp_path / "m.pt"), "--ctx", "32",
                                       "--max-chunks", "6", "--threads", "2", "--llama-types", "q4_k_m",
-                                      "--out", str(out)])
+                                      "--torch-check", "--out", str(out)])
     quant_quality.main()
     res = json.load(open(out, encoding="utf-8"))["results"]
+    # 교차 확인: llama.cpp가 읽은 Q4_0 GGUF는 fp32 기준보다, 같은 양자화 가중치를 넣은 PyTorch 모델에 훨씬
+    # 가깝다 — 파일의 블록 배치·스케일·텐서별 타입이 의도대로 읽힌다는 뜻이다(예전 검사는 fp32와의 상관 > 0.8뿐).
+    # 남는 차이는 llama.cpp가 양자화 가중치와 곱할 때 활성값도 8비트 블록으로 바꾸는 데서 온다. Q8_0은 가중치
+    # 오차와 그 오차가 비슷한 크기라 '더 가깝다'까지만 본다
+    assert res["q4_0"]["vs_torch_dequant"]["mean_abs_nll_diff"] < res["q4_0"]["mean_abs_nll_diff"] / 3, res["q4_0"]
+    assert res["q8_0"]["vs_torch_dequant"]["mean_abs_nll_diff"] < res["q8_0"]["mean_abs_nll_diff"], res["q8_0"]
+    assert all(res[q]["vs_torch_dequant"]["top1_agreement"] > 0.9 for q in ("q8_0", "q4_0"))
+    assert res["q4_0"]["torch_dequant"]["mean_abs_nll_diff"] > res["q8_0"]["torch_dequant"]["mean_abs_nll_diff"]
+    assert "torch_dequant" not in res["f16"]
     assert set(res) == {"torch_fp32", "f16", "q8_0", "q4_0", "llama:q4_k_m"} and res["torch_fp32"]["tokens"] == 6 * 31
     # llama.cpp 자체 양자화기로 만든 K-양자화도 같은 묶음으로 잰다 (F16보다 작고, 기준에서 조금 벗어난다)
     assert res["llama:q4_k_m"]["bytes"] < res["q8_0"]["bytes"] and res["llama:q4_k_m"]["mean_abs_nll_diff"] > 0
