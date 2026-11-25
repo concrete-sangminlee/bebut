@@ -152,9 +152,9 @@ def main():
             r.update(rescore(r, questions, excluded_items(exclude, args.questions)))
             print(f"{label}: 대화 정답률 {r['heldout_acc']}% (95% 구간 {r['heldout_ci95']}, "
                   f"채점 {r['n_scored']}문항, 오염 제외 {r['excluded']}) | 유형별 {r['by_type']}")
-        print_comparisons(saved)
         json.dump(saved, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"저장: {args.out}")
+        print_comparisons(saved)
         return
     results, answers_md = {}, ["# SFT 평가 — 모델별 답변\n"]
     for spec in args.models:
@@ -184,10 +184,11 @@ def main():
         if device == "cuda":
             torch.cuda.empty_cache()
 
-    print_comparisons(results)  # 모델 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
+    # 먼저 저장한다 — 몇 시간 잰 결과를 출력 단계의 오류로 잃지 않게
     json.dump(results, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     open(args.answers_out, "w", encoding="utf-8").write("\n".join(answers_md))
     print(f"\n저장: {args.out}, {args.answers_out}", flush=True)
+    print_comparisons(results)  # 모델 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
 
 
 if __name__ == "__main__":

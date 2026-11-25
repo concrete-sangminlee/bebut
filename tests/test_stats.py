@@ -75,6 +75,8 @@ def test_half_width_and_known_case():
     c = unpaired_diff(231, 500, 200, 500)  # annealing 전후 HellaSwag 46.2% → 40.0% (커밋된 기록)
     assert c["diff"] == pytest.approx(-0.062) and 0.04 < c["p"] < 0.06
     assert wilson_ci(21, 30)[0] < 0.55
+    empty = unpaired_diff(5, 10, 0, 0)  # 한쪽에 문항이 없으면 '차이 있음'이 나오면 안 된다
+    assert empty["p"] == 1.0 and empty["ci95"] == [-1.0, 1.0] and empty["n"] == 0
 
 
 def test_evaluate_choices_records_items(monkeypatch):

@@ -3,8 +3,11 @@
 학습 중 GPU를 방해하지 않도록 CPU에서 돌린다 (CUDA를 아예 안 보이게 한다).
 KOBEST는 문항당 선택지 수만큼 forward가 필요해 느리므로 --limit로 표본을 줄인다.
 
-사용: python eval_milestones.py --config base_1b --limit 200
-결과: checkpoints/<config>/milestones.csv
+사용: python eval_milestones.py --config base_1b --limit 500
+결과: checkpoints/<config>/milestones.csv   step별 요약 (그래프용)
+      checkpoints/<config>/milestones.json  문항별 정오까지 — 두 step을 같은 문항끼리 짝 비교한다:
+          python compare_evals.py checkpoints/base_1b/milestones.json --a "step 4000" --b "step 16000"
+      예전엔 CSV의 백분율만 남아서, 단계 사이의 변화가 표본 오차보다 큰지 볼 방법이 없었다 (RESULTS §1).
 """
 
 import os
@@ -14,6 +17,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""  # GPU 학습 방해 방지
 import argparse
 import csv
 import glob
+import json
 import re
 import time
 
@@ -23,11 +27,23 @@ torch.set_num_threads(int(os.environ.get("EVAL_THREADS", "24")))
 
 import importlib
 
-from eval import FORMATTERS, eval_kobest, perplexity
+from eval import FORMATTERS, kobest_details, perplexity
 from data.dataloader import ShardedDataLoader
 from model import GPT
 from sample import load_checkpoint
 from tokenizer.bpe import ByteBPETokenizer
+
+
+def save_details(path, label, record):
+    """milestones.json에 한 step의 결과를 더한다 (원자적으로 — 평가 도중에 죽어도 파일이 깨지지 않게)."""
+    doc = {}
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    doc[label] = record
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(doc, f, ensure_ascii=False, indent=1)
+    os.replace(path + ".tmp", path)
 
 
 def main():
@@ -79,16 +95,20 @@ def main():
                                        seed=123, device="cpu")
             ppl, _ = perplexity(model, loader, args.ppl_iters, "cpu")
 
-            scores = {}
+            scores, details = {}, {}
             for task in FORMATTERS:
-                acc, _, preds = eval_kobest(model, tok, task, args.shots, "cpu", args.limit)
-                scores[task] = acc
+                details[task] = kobest_details(model, tok, task, args.shots, "cpu", args.limit)
+                scores[task] = details[task]["acc_calib"]
                 # 예측이 한 선택지로 쏠리면 정확도는 라벨 분포일 뿐이다
+                preds = details[task]["preds"]["acc_calib"]
                 top = max(preds.values()) / sum(preds.values())
                 if top > 0.9:
                     print(f"    경고: {task} 예측이 한쪽으로 쏠림 {dict(preds)}", flush=True)
 
             tokens = step * conf.train["batch_size"] * conf.train["grad_accum"] * conf.model.max_seq_len
+            save_details(os.path.join(ckpt_dir, "milestones.json"), f"step {step}",
+                         {"step": step, "tokens": tokens, "ppl": round(ppl, 2), "shots": args.shots,
+                          "limit": args.limit, "kobest": details})
             row = [step, tokens, f"{ppl:.2f}",
                    f"{scores['copa']*100:.1f}", f"{scores['boolq']*100:.1f}",
                    f"{scores['hellaswag']*100:.1f}", f"{time.time()-t0:.0f}"]

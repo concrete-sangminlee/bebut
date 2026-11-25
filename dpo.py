@@ -46,7 +46,7 @@ import torch.nn.functional as F
 from chat import encode_prompt
 from model import GPT
 from sample import device_type_of, load_checkpoint, pick_device
-from sft import RESUME_FILE, data_fingerprint, load_resume, save_resume
+from sft import RESUME_FILE, already_past, data_fingerprint, load_resume, refuse_stale_resume, save_resume
 from tokenizer.bpe import ByteBPETokenizer
 from train import step_if_finite
 
@@ -159,7 +159,9 @@ def sequence_logprobs(model, x, y, chunk=4096):
         else:
             parts.append(_token_logprobs(hc, tc, w))
     lp = torch.cat(parts) if parts else hs.new_zeros(0, dtype=torch.float32)
-    return torch.zeros(x.size(0), dtype=torch.float32, device=x.device).index_add(0, rows, lp)
+    # 시퀀스별 합: (2B, T) 빈 판에 토큰별 값을 놓고 행으로 더한다. index_add로 같은 행에 여러 값을
+    # 더하면 CUDA에서는 더하는 순서가 정해져 있지 않아, 같은 입력에도 실행마다 끝자리가 달라질 수 있다.
+    return torch.zeros(x.shape, dtype=torch.float32, device=x.device).index_put((rows, cols), lp).sum(dim=1)
 
 
 def dpo_loss(pol_c, pol_r, ref_c, ref_r, beta, label_smoothing=0.0):
@@ -243,6 +245,10 @@ def main():
     if not args.base and not args.resume:
         ap.error("--base(새로 시작) 또는 --resume(이어서)이 필요합니다")
 
+    ckpt_dir = os.path.join(args.out_dir, args.config)
+    if not args.resume:
+        refuse_stale_resume(ckpt_dir)
+
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
     device = pick_device(args.device)
@@ -256,10 +262,12 @@ def main():
     print(f"선호 쌍 train {len(train)} / val {len(val)} (형식 불일치·너무 짧아 버린 행 {skipped})")
 
     policy = GPT(conf.model)
+    base = None  # 어느 가중치에서 출발했나(= 참조 모델) — resume.pt에 적어 두고 재개할 때 보여준다
     if not args.resume:
         ckpt = load_checkpoint(args.base)
         policy.load_state_dict(ckpt["model"])
-        print(f"시작 모델: {args.base} (step {ckpt.get('step')})")
+        base = f"{args.base} (step {ckpt.get('step')})"
+        print(f"시작 모델: {base}")
         del ckpt
     policy = policy.to(device)
     opt = torch.optim.AdamW(policy.param_groups(tcfg["weight_decay"]), lr=tcfg["max_lr"],
@@ -272,7 +280,6 @@ def main():
     max_steps = steps_per_epoch * tcfg["epochs"]
     assert max_steps > 0, "선호 쌍이 step 하나 분량도 안 된다"
     warmup = max(1, int(max_steps * tcfg.get("warmup_frac", 0.1)))
-    ckpt_dir = os.path.join(args.out_dir, args.config)
     os.makedirs(ckpt_dir, exist_ok=True)
     print(f"총 {max_steps} steps | β={beta} | step당 {B * accum}쌍")
 
@@ -282,7 +289,11 @@ def main():
         # 참조 로그확률은 시작 모델로 계산한 값이라 resume.pt에 같이 들어 있다 (정책은 이미 움직였다)
         start = load_resume(args.resume, policy, opt, args.config, fingerprint)
         train_ref, val_ref = start.pop("train_ref"), start.pop("val_ref")
-        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터", flush=True)
+        base = start.get("base")
+        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터 "
+              f"(출발한 시작 모델: {base or '기록 없음'})", flush=True)
+        if already_past(args.stop_after, start["step"]):
+            return
     else:
         t_ref = time.time()
         train_ref = reference_logprobs(policy, train, pad_id, B, device, device_type)
@@ -292,7 +303,7 @@ def main():
         print(f"시작 val: loss {v0['loss']:.4f} (정책=참조라 ln2={math.log(2):.4f}여야 한다)", flush=True)
 
     def checkpoint(epoch, step_in_epoch, step):
-        return save_resume(ckpt_dir, policy, opt, config=args.config, fingerprint=fingerprint,
+        return save_resume(ckpt_dir, policy, opt, config=args.config, fingerprint=fingerprint, base=base,
                            epoch=epoch, step_in_epoch=step_in_epoch, step=step, bad=bad,
                            train_ref=train_ref, val_ref=val_ref)
 

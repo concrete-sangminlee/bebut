@@ -115,7 +115,7 @@ def score_doc(scorer, ids, max_len, stride):
 
 
 def score_text(scorer, docs, max_len=1024, stride=512, progress=None):
-    """문서 목록 → {"bpb", "bytes", "tokens", "docs", "bits_per_token", "bytes_per_token"}."""
+    """문서 목록 → {"bpb", "bytes", "tokens", "docs", "bits_per_token", "bytes_per_token", "max_len", "stride"}."""
     if not 0 < stride < max_len:
         raise ValueError(f"stride는 1 이상 max_len({max_len}) 미만이어야 한다: {stride}")
     if scorer.max_len < max_len:  # 모델 문맥이 더 짧으면 창과 stride를 함께 줄인다
@@ -134,7 +134,8 @@ def score_text(scorer, docs, max_len=1024, stride=512, progress=None):
             print(f"    {k + 1}/{len(docs)} 문서, 지금까지 BPB {nats / math.log(2) / n_bytes:.4f}", flush=True)
     bits = nats / math.log(2)
     return {"bpb": bits / max(1, n_bytes), "bytes": n_bytes, "tokens": n_tok, "docs": len(docs),
-            "bits_per_token": bits / max(1, n_tok), "bytes_per_token": n_bytes / max(1, n_tok)}
+            "bits_per_token": bits / max(1, n_tok), "bytes_per_token": n_bytes / max(1, n_tok),
+            "max_len": max_len, "stride": stride}  # 실제로 쓴 창 (모델 문맥이 짧으면 요청보다 작다)
 
 
 def lossless_docs(scorers, docs):
@@ -166,23 +167,29 @@ def merge_baselines(out, paths):
     """이번 결과(out)에 예전 결과 파일들의 모델을 영역별로 합쳐 BPB 순으로 정렬한다.
 
     같은 글(sha256) · 같은 창(max_len, stride)으로 잰 것만 합친다 — 글이 다르면 BPB는 나란히 놓을 수
-    없다. 돌려주는 값: ({영역: [(모델, bpb, 파라미터 수, 출처)]}, [합치지 않은 이유])."""
+    없다. 창은 모델마다 실제로 쓴 값을 본다(문맥이 짧은 모델은 요청보다 작은 창으로 잰다).
+    돌려주는 값: ({영역: [(모델, bpb, 파라미터 수, 출처)]}, [합치지 않은 이유])."""
+    want = (out["max_len"], out["stride"])
     table = {d: [(m, r["domains"][d]["bpb"], r.get("params"), "이번")
                  for m, r in out["models"].items() if d in r["domains"]] for d in out["text"]}
     skipped = []
     for path in paths:
         with open(path, encoding="utf-8") as f:
             base = json.load(f)
-        if (base.get("max_len"), base.get("stride")) != (out["max_len"], out["stride"]):
-            skipped.append(f"{path}: 문맥 창이 다르다 (max_len {base.get('max_len')} · stride {base.get('stride')})")
-            continue
         for d, info in out["text"].items():
             if base.get("text", {}).get(d, {}).get("sha256") != info["sha256"]:
                 skipped.append(f"{path} [{d}]: 잰 글이 다르다 (sha256 불일치 — 문서가 빠졌거나 --kb가 다르다)")
                 continue
             have = {m for m, *_ in table[d]}
-            table[d] += [(m, r["domains"][d]["bpb"], r.get("params"), path)
-                         for m, r in base["models"].items() if d in r["domains"] and m not in have]
+            for m, r in base["models"].items():
+                dom = r["domains"].get(d)
+                if dom is None or m in have:
+                    continue
+                window = (dom.get("max_len", base.get("max_len")), dom.get("stride", base.get("stride")))
+                if window != want:
+                    skipped.append(f"{path} [{m}]: 문맥 창이 다르다 (max_len {window[0]} · stride {window[1]})")
+                    continue
+                table[d].append((m, dom["bpb"], r.get("params"), path))
     return {d: sorted(rows, key=lambda r: r[1]) for d, rows in table.items()}, skipped
 
 
@@ -226,6 +233,13 @@ def main():
         domains[name] = keep
         print(f"[{name}] 문서 {len(keep)}개 / {text_info[name]['bytes'] / 1000:.0f}KB "
               f"(복원 안 돼 뺀 문서: {text_info[name]['dropped_not_lossless'] or '없음'})", flush=True)
+        if not keep:  # 그대로 가면 모든 모델이 BPB 0.0(가장 좋은 점수)으로 기록된다
+            raise SystemExit(f"[{name}] 모든 토크나이저가 복원하는 문서가 하나도 없습니다 — 원문을 복원하지 "
+                             f"못하는 모델을 빼고 다시 재세요: {text_info[name]['dropped_not_lossless']}")
+        for who, n in dropped.items():
+            if n > len(docs) // 5:
+                print(f"  경고: {who}의 토크나이저가 문서 {len(docs)}개 중 {n}개를 복원하지 못해 뺐다 — "
+                      "남은 글이 원래 표본과 달라진다", flush=True)
 
     # 2) 모델을 하나씩 올려 잰다
     results = {}
@@ -245,6 +259,9 @@ def main():
             d = r["domains"][name]
             print(f"  [{name}] BPB {d['bpb']:.4f} | 토큰당 {d['bits_per_token']:.3f}비트 · "
                   f"{d['bytes_per_token']:.2f}바이트/토큰", flush=True)
+            if d["max_len"] != args.max_len:
+                print(f"    주의: 이 모델의 문맥이 짧아 창 {d['max_len']}토큰(stride {d['stride']})으로 쟀다 — "
+                      f"창 {args.max_len}토큰으로 잰 모델보다 불리한 조건이다", flush=True)
         r["seconds"] = round(time.time() - t0)
         results[scorer.name] = r
         del scorer

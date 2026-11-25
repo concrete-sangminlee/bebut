@@ -147,6 +147,34 @@ def test_sft_eval_cli(ws):
     assert again["SFT"]["heldout_acc"] == r["heldout_acc"] and again["베이스"]["excluded"] == 1
 
 
+def test_eval_milestones_keeps_per_item_results_for_paired_comparison(ws):
+    """마일스톤 평가가 step별로 문항별 정오를 남기고, compare_evals.py가 두 step을 짝 비교한다.
+    예전엔 CSV의 백분율만 남아 단계 사이의 변화를 표본 오차와 구분할 수 없었다 (RESULTS §1)."""
+    import numpy as np
+
+    ckpts = ws / "checkpoints" / "ci_eval"
+    ckpts.mkdir(parents=True)
+    for src, step in (("a.pt", 4000), ("b.pt", 8000)):
+        os.link(ws / src, ckpts / f"step_{step:06d}.pt")
+    (ws / "shards").mkdir()
+    np.random.default_rng(0).integers(0, 60000, 30000).astype(np.uint16).tofile(ws / "shards" / "val_000000.bin")
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(ws / "stub"), ROOT]), "EVAL_THREADS": "2"}
+    cmd = [sys.executable, os.path.join(ROOT, "eval_milestones.py"), "--config", "ci_eval", "--tokenizer", TOK,
+           "--shard-dir", "shards", "--limit", "6", "--shots", "2", "--ppl-iters", "2"]
+    r = subprocess.run(cmd, cwd=ws, env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout[-1500:] + r.stderr[-2500:]
+    doc = json.load(open(ckpts / "milestones.json", encoding="utf-8"))
+    assert list(doc) == ["step 4000", "step 8000"] and doc["step 8000"]["limit"] == 6
+    assert len(doc["step 4000"]["kobest"]["boolq"]["items"]["acc_calib"]) == 6
+    assert len(open(ckpts / "milestones.csv").read().splitlines()) == 3  # 머리글 + 2행 (기존 형식 그대로)
+    out = run(ws, "compare_evals.py", "checkpoints/ci_eval/milestones.json", "--a", "step 4000", "--b", "step 8000")
+    assert out.count("짝 비교 n=6") == 3  # 세 과제 모두 같은 문항끼리
+    # 다시 부르면 이미 평가한 step은 건너뛴다 (JSON도 그대로)
+    r = subprocess.run(cmd, cwd=ws, env=env, capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0 and "step   4000" not in r.stdout
+    assert json.load(open(ckpts / "milestones.json", encoding="utf-8")) == doc
+
+
 def test_remeasure_script_end_to_end(ws, tmp_path):
     """remeasure.sh를 초소형 체크포인트로 끝까지 돌린다. 단계마다 라벨·파일 이름이 다음 단계와 맞물려야
     한다 — 어긋나면 마지막의 짝 비교(compare_evals.py)가 라벨을 못 찾아 실패한다."""

@@ -110,8 +110,9 @@ perplexity는 계속 내려갔습니다. loss가 준다고 능력이 바로 따�
 > HellaSwag +7.3%p (−3.7 ~ +18.1, p=0.19). '정체 뒤 상승'도, 19,200 → 20,000의 HellaSwag
 > −8.0%p(p=0.16)도 150문항으로는 읽을 수 없는 신호였습니다. 확실한 것은 perplexity의 꾸준한
 > 하락과, 무작위(50% · 25%)보다 높다는 것(예: COPA 64.0%의 구간 56~71%)까지입니다.
-> 다음부터는 마일스톤 평가를 과제당 500문항(±4.4%p)으로 돌리고, 평가 결과에 문항별 정오를
-> 남겨 같은 문항끼리 짝 비교(`compare_evals.py`)합니다.
+> 다음부터는 마일스톤 평가를 과제당 500문항(±4.4%p)으로 돌리고, `eval_milestones.py`가 step마다
+> 문항별 정오를 `milestones.json`에 남겨 두 step을 같은 문항끼리 짝 비교합니다
+> (`python compare_evals.py checkpoints/base_1b/milestones.json --a "step 4000" --b "step 16000"`).
 
 ## 2. annealing 효과 (전체 문항, GPU, 같은 조건 — KOBEST †)
 

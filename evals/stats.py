@@ -85,6 +85,8 @@ def unpaired_diff(ka: int, na: int, kb: int, nb: int) -> dict:
     같은 문항으로 쟀더라도 문항별 정오가 없으면 이렇게밖에 못 본다 — 짝 비교보다 구간이 넓다.
     """
     pa, pb = ka / max(1, na), kb / max(1, nb)
+    if na == 0 or nb == 0:  # 한쪽에 문항이 없으면 비교할 것이 없다 — 구간은 전체, p는 1
+        return {"method": "unpaired", "n": 0, "acc_a": pa, "acc_b": pb, "diff": 0.0, "ci95": [-1.0, 1.0], "p": 1.0}
     la, ua = wilson_ci(ka, na)
     lb, ub = wilson_ci(kb, nb)
     diff = pb - pa

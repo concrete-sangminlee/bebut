@@ -97,12 +97,38 @@ def test_merge_baselines_only_joins_the_same_text(tmp_path):
                 "models": {m: {"params": 10, "domains": {"웹": {"bpb": b}}} for m, b in models.items()}}
 
     paths = []
+    short = result({"짧은문맥": 0.3})  # 파일에는 요청한 창(1024)이 적혀 있지만 이 모델은 512로 쟀다
+    short["models"]["짧은문맥"]["domains"]["웹"].update(max_len=512, stride=256)
     for k, r in enumerate([result({"공개A": 1.2, "공개B": 0.9}), result({"다른글": 0.1}, sha="bbbb"),
-                           result({"다른창": 0.2}, max_len=512), result({"bebut": 9.9})]):
+                           result({"다른창": 0.2}, max_len=512), result({"bebut": 9.9}), short]):
         paths.append(str(tmp_path / f"b{k}.json"))
         json.dump(r, open(paths[-1], "w", encoding="utf-8"))
 
     table, skipped = merge_baselines(result({"bebut": 1.0}), paths)
     assert [(m, b) for m, b, _, _ in table["웹"]] == [("공개B", 0.9), ("bebut", 1.0), ("공개A", 1.2)]  # BPB 순
     assert table["웹"][1][3] == "이번"  # 이름이 같으면 이번에 잰 값이 이긴다
-    assert len(skipped) == 2 and "sha256" in skipped[0] and "문맥 창" in skipped[1]
+    assert len(skipped) == 3 and "sha256" in skipped[0] and "문맥 창" in skipped[1] and "짧은문맥" in skipped[2]
+
+
+def test_short_context_model_records_the_window_it_actually_used():
+    """모델 문맥이 요청한 창보다 짧으면 줄여서 재고, 실제로 쓴 창을 결과에 남긴다."""
+    scorer = BigramScorer()
+    scorer.max_len = 8
+    r = score_text(scorer, ["가나다라마바사아자차카타파하" * 3], max_len=1024, stride=512)
+    assert (r["max_len"], r["stride"]) == (8, 4)
+    assert score_text(BigramScorer(), ["가나다"], max_len=16, stride=8)["max_len"] == 16
+
+
+def test_cli_stops_when_no_document_survives(monkeypatch, tmp_path, tiny_tok):
+    """남은 문서가 없으면 멈춘다 — 예전엔 그대로 진행해 모든 모델이 BPB 0.0(가장 좋은 점수)으로 저장됐다."""
+    import sys
+
+    from evals import text_bpb
+
+    tiny_tok.save(str(tmp_path / "tok.json"))
+    monkeypatch.setattr(text_bpb, "load_docs", lambda kb, text_file=None: {"웹": []})
+    monkeypatch.setattr(sys, "argv", ["text_bpb", "--ckpt", "x=missing.pt", "--tokenizer", str(tmp_path / "tok.json"),
+                                      "--out", str(tmp_path / "o.json")])
+    with pytest.raises(SystemExit, match="하나도 없습니다"):
+        text_bpb.main()
+    assert not (tmp_path / "o.json").exists()

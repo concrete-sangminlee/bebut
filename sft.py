@@ -198,9 +198,25 @@ def save_resume(ckpt_dir, model, opt, **state):
     return path
 
 
+def refuse_stale_resume(ckpt_dir):
+    """새로 시작(--base)하는데 출력 폴더에 이전 실행의 resume.pt가 남아 있으면 멈춘다.
+
+    그대로 두면, 새 실행이 첫 저장(save_every) 전에 죽었을 때 --resume이 '이전' 실행을 조용히
+    이어 간다 — 지문은 데이터와 설정만 보므로 시작 가중치가 달라도 통과한다."""
+    path = os.path.join(ckpt_dir, RESUME_FILE)
+    if os.path.exists(path):
+        raise SystemExit(f"{path}가 남아 있습니다 (중단된 이전 실행의 재개 상태). 이어서 하려면 --base 대신 "
+                         f"--resume {path}, 새로 시작하려면 그 파일을 지우고 다시 실행하세요")
+
+
 def load_resume(path, model, opt, config, fingerprint):
     """resume.pt → 모델·옵티마이저에 싣고 상태 dict를 돌려준다. 설정·데이터가 다르면 멈춘다."""
-    ck = torch.load(path, map_location="cpu", weights_only=True)
+    try:  # mmap: 1.2B면 14GB인 파일을 통째로 올리지 않고, 싣는 텐서만 읽는다 (sample.load_checkpoint와 같다)
+        ck = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    except RuntimeError as e:
+        if "mmap" not in str(e):
+            raise
+        ck = torch.load(path, map_location="cpu", weights_only=True)
     if ck.get("config") != config:
         raise SystemExit(f"{path}는 --config {ck.get('config')}로 저장됐습니다 (지금: {config})")
     if ck.get("fingerprint") != fingerprint:
@@ -208,7 +224,16 @@ def load_resume(path, model, opt, config, fingerprint):
                          "--limit과 같은 설정으로 재개하세요 (다르면 위치가 다른 예제를 가리킵니다)")
     model.load_state_dict(ck.pop("model"))
     opt.load_state_dict(ck.pop("optimizer"))
-    return ck
+    # 남은 텐서(DPO의 참조 로그확률)는 복사해 파일에서 떼어 둔다 — 곧 같은 경로에 새 resume.pt를 쓴다
+    return {k: v.clone() if torch.is_tensor(v) else v for k, v in ck.items()}
+
+
+def already_past(stop_after, next_step) -> bool:
+    """--stop-after N으로 재개했는데 이미 step N을 마친 상태인가 (그러면 한 step도 더 돌지 않는다)."""
+    if stop_after is None or next_step <= stop_after:
+        return False
+    print(f"--stop-after {stop_after}: 이미 step {next_step - 1}까지 돌았습니다 — 더 돌 것이 없습니다", flush=True)
+    return True
 
 
 def main():
@@ -230,6 +255,10 @@ def main():
     if not args.base and not args.resume:
         ap.error("--base(새로 시작) 또는 --resume(이어서)이 필요합니다")
 
+    ckpt_dir = os.path.join(args.out_dir, args.config)
+    if not args.resume:
+        refuse_stale_resume(ckpt_dir)
+
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
     device = pick_device(args.device)
@@ -250,16 +279,17 @@ def main():
     # CPU로 읽는다. 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)도 들어 있어서
     # GPU로 바로 올리면 그만큼이 학습 내내 GPU에 남는다.
     model = GPT(conf.model)
+    base = None  # 어느 가중치에서 출발한 학습인가 — resume.pt에 적어 두고 재개할 때 보여준다
     if not args.resume:
         ckpt = load_checkpoint(args.base)
         model.load_state_dict(ckpt["model"])
-        print(f"베이스 모델: {args.base} (step {ckpt['step']})")
+        base = f"{args.base} (step {ckpt['step']})"
+        print(f"베이스 모델: {base}")
         del ckpt
     model = model.to(device)
     opt = torch.optim.AdamW(model.param_groups(tcfg["weight_decay"]),
                             lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device_type == "cuda"))
 
-    ckpt_dir = os.path.join(args.out_dir, args.config)
     os.makedirs(ckpt_dir, exist_ok=True)
     pad_id = tok.special_tokens["<|pad|>"]
     B, accum = tcfg["batch_size"], tcfg["grad_accum"]
@@ -278,14 +308,18 @@ def main():
     start = {"epoch": 0, "step_in_epoch": 0, "step": 0, "bad": 0}
     if args.resume:
         start = load_resume(args.resume, model, opt, args.config, fingerprint)
-        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터", flush=True)
+        base = start.get("base")
+        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터 "
+              f"(출발한 베이스 모델: {base or '기록 없음'})", flush=True)
+        if already_past(args.stop_after, start["step"]):
+            return
     else:
         vl0 = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
         print(f"SFT 전 val loss (베이스 모델): {vl0:.4f}", flush=True)
 
     def checkpoint(epoch, step_in_epoch, step):
         """다음에 돌 자리를 적어 resume.pt로 남긴다."""
-        return save_resume(ckpt_dir, model, opt, config=args.config, fingerprint=fingerprint,
+        return save_resume(ckpt_dir, model, opt, config=args.config, fingerprint=fingerprint, base=base,
                            epoch=epoch, step_in_epoch=step_in_epoch, step=step, bad=bad)
 
     model.train()

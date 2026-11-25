@@ -80,6 +80,18 @@ def test_bench_infer_smoke(tmp_path):
     assert res["ttft"]["no_cache_s"] > 0 and res["ttft"]["prefix_cache_s"] > 0
     assert set(res["sampler_ms"]) == {"greedy", "top_p_0.95_peaked", "top_p_0.95_flat", "top_p_1.0"}
     assert res["env"]["threads"] == 1 and res["gguf"] is None
-    # 창이 찬 뒤에도 대부분의 문맥을 캐시에서 재사용한다 (실제 토크나이저로 80턴 모의)
-    w = res["window_reuse"]
-    assert w["turns_measured"] > 30 and w["reused_per_turn"] > 3 * w["recomputed_per_turn"]
+    assert res["window_reuse"] is None  # 문맥이 짧은 설정에서는 대화 모의를 하지 않는다
+
+
+def test_window_reuse_simulation_uses_the_given_context():
+    """문맥 창 모의: 창이 찬 뒤에도 대부분의 문맥을 캐시에서 재사용하고, 문맥 길이를 결과에 남긴다.
+    예전엔 재는 설정과 무관하게 늘 2048로 모의해, 문맥 1024인 설정에 2048의 수치를 적었다."""
+    import bench_infer
+    from tokenizer.bpe import ByteBPETokenizer
+
+    tok = ByteBPETokenizer.load(os.path.join(ROOT, "tokenizer", "tokenizer.json"))
+    big, small = bench_infer.window_reuse(tok, 2048, 256), bench_infer.window_reuse(tok, 1024, 256)
+    assert big["max_seq_len"] == 2048 and small["max_seq_len"] == 1024
+    assert big["turns_measured"] > 30 and big["reused_per_turn"] > 3 * big["recomputed_per_turn"]
+    assert small["reused_per_turn"] < big["reused_per_turn"] / 2  # 창이 작으면 재사용할 문맥도 작다
+    assert small["reused_per_turn"] + small["recomputed_per_turn"] <= 1024 - 256

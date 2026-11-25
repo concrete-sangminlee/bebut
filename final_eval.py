@@ -101,10 +101,10 @@ def main():
         if device == "cuda":
             torch.cuda.empty_cache()
 
-    print_comparisons(results)  # 체크포인트 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
-    with open(args.out, "w", encoding="utf-8") as f:
+    with open(args.out, "w", encoding="utf-8") as f:  # 먼저 저장한다 — 몇 시간 잰 결과를 출력 단계의 오류로 잃지 않게
         json.dump(results, f, ensure_ascii=False, indent=2)
     print(f"\n저장: {args.out}", flush=True)
+    print_comparisons(results)  # 체크포인트 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
 
 
 if __name__ == "__main__":

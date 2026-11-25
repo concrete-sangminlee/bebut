@@ -13,7 +13,7 @@
   문맥 창      창이 찬 뒤 턴마다 새로 계산하는 토큰 수 (대화 80턴 모의, 토크나이저만 쓴다)
 
 사용:
-  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 약 10GB, 15분
+  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 약 8GB, 15분
   python bench_infer.py --config mid_125m                                  # 작은 모델로 빠르게
 """
 
@@ -134,8 +134,8 @@ def window_reuse(tok, max_seq_len=2048, max_tokens=256, turns=80, seed=0):
         msgs.append({"role": "assistant", "content": reply})
         if full:
             reused, recomputed, n = reused + k, recomputed + len(ids) - k, n + 1
-    return {"turns_measured": n, "recomputed_per_turn": round(recomputed / max(1, n)),
-            "reused_per_turn": round(reused / max(1, n))}
+    return {"max_seq_len": max_seq_len, "max_tokens": max_tokens, "turns_measured": n,
+            "recomputed_per_turn": round(recomputed / max(1, n)), "reused_per_turn": round(reused / max(1, n))}
 
 
 def llama_decode_tps(llm, prompt, n):
@@ -150,30 +150,36 @@ def llama_decode_tps(llm, prompt, n):
     return n / (time.perf_counter() - t)
 
 
-def gguf_bench(state_dict, cfg, tok, types, ctx, n, reps, threads):
-    """llama.cpp로 GGUF 타입별 크기와 디코드 속도. llama-cpp-python이 없으면 None."""
+def export_ggufs(model, tok, types, out_dir):
+    """fp32 모델을 GGUF 타입별 파일로 내보낸다 → {타입: 경로}. llama-cpp-python이 없으면 None.
+
+    모델이 아직 fp32일 때 부른다. 예전엔 fp32 가중치의 사본을 GGUF를 잴 때까지 들고 있어서(1.2B면
+    5GB), llama.cpp를 재는 동안에도 그만큼이 메모리에 남아 있었다."""
     try:
-        from llama_cpp import Llama
+        import llama_cpp  # noqa: F401
     except ImportError:
         return None
     from export_gguf import export_gguf
 
-    out = {}
-    with tempfile.TemporaryDirectory(dir=os.environ.get("BEBUT_TMPDIR")) as d:
-        paths = {q: export_gguf(state_dict, cfg, tok, os.path.join(d, f"m_{q}.gguf"), q, name="bench",
-                                write_modelfile=False) for q in types}
-        del state_dict
+    sd = model.state_dict()
+    return {q: export_gguf(sd, model.cfg, tok, os.path.join(out_dir, f"m_{q}.gguf"), q, name="bench",
+                           write_modelfile=False) for q in types}
+
+
+def gguf_bench(paths, ctx, n, reps, threads):
+    """llama.cpp로 GGUF 타입별 크기와 디코드 속도."""
+    from llama_cpp import Llama
+
+    out, prompt = {}, list(range(300, 300 + ctx))
+    for q, path in paths.items():
+        llm = Llama(model_path=path, n_ctx=ctx + n + 8, n_threads=threads, verbose=False)
+        llama_decode_tps(llm, prompt, 2)  # 워밍업
+        tps = statistics.median(llama_decode_tps(llm, prompt, n) for _ in range(reps))
+        out[q] = {"bytes": os.path.getsize(path), "decode_tok_s": round(tps, 2)}
+        print(f"  GGUF {q}: {out[q]['bytes'] / 1e9:.2f}GB, {out[q]['decode_tok_s']} tok/s", flush=True)
+        llm.close()
         gc.collect()
-        prompt = list(range(300, 300 + ctx))
-        for q, path in paths.items():
-            llm = Llama(model_path=path, n_ctx=ctx + n + 8, n_threads=threads, verbose=False)
-            llama_decode_tps(llm, prompt, 2)  # 워밍업
-            tps = statistics.median(llama_decode_tps(llm, prompt, n) for _ in range(reps))
-            out[q] = {"bytes": os.path.getsize(path), "decode_tok_s": round(tps, 2)}
-            print(f"  GGUF {q}: {out[q]['bytes'] / 1e9:.2f}GB, {out[q]['decode_tok_s']} tok/s", flush=True)
-            llm.close()
-            gc.collect()
-            os.remove(path)
+        os.remove(path)
     return out
 
 
@@ -205,6 +211,15 @@ def main():
         print(f"경고: 시작 시점 부하 {res['env']['loadavg_at_start']} — "
               "다른 작업이 CPU를 쓰는 중이면 수치가 낮게 나온다")
 
+    with tempfile.TemporaryDirectory(dir=os.environ.get("BEBUT_TMPDIR")) as tmp:
+        bench(args, cfg, history, res, tmp)
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(res, f, ensure_ascii=False, indent=1)
+        print(f"저장: {args.out}")
+
+
+def bench(args, cfg, history, res, tmp):
     model = GPT(cfg).eval()
     res["params"] = sum(p.numel() for p in model.parameters())
     print(f"{args.config}: {res['params'] / 1e6:.0f}M 파라미터, 스레드 {args.threads}", flush=True)
@@ -213,9 +228,9 @@ def main():
     print(f"  PyTorch fp32: {res['torch']['fp32_decode_tok_s']} tok/s", flush=True)
 
     tok = ByteBPETokenizer.load(args.tokenizer)
-    gguf_state = None
+    paths = None
     if args.types and tok.vocab_size <= cfg.vocab_size:
-        gguf_state = {k: v.clone() for k, v in model.state_dict().items()}  # bf16으로 바꾸기 전의 fp32
+        paths = export_ggufs(model, tok, args.types, tmp)  # bf16으로 바꾸기 전에, fp32 가중치에서 바로
 
     model = model.to(torch.bfloat16)
     res["torch"]["bf16_decode_tok_s"] = round(decode_tps(model, args.ctx, args.new_tokens, args.reps), 2)
@@ -232,16 +247,14 @@ def main():
 
     res["sampler_ms"] = sampler_ms(cfg.vocab_size)
     print(f"  샘플러(ms/토큰): {res['sampler_ms']}", flush=True)
-    res["window_reuse"] = window_reuse(tok) if tok.vocab_size > 60000 else None
-    if res["window_reuse"]:
-        print(f"  문맥 창이 찬 뒤 턴당 새로 계산 {res['window_reuse']['recomputed_per_turn']}토큰", flush=True)
+    # 문맥 창 모의는 이 설정의 문맥 길이로 한다 (실제 64K 토크나이저와 대화가 들어갈 만한 문맥일 때만)
+    res["window_reuse"] = None
+    if tok.vocab_size > 60000 and cfg.max_seq_len >= 1024:
+        res["window_reuse"] = w = window_reuse(tok, cfg.max_seq_len, min(256, cfg.max_seq_len // 4))
+        print(f"  문맥 {cfg.max_seq_len}토큰이 찬 뒤 턴당 재사용 {w['reused_per_turn']} · 새로 계산 "
+              f"{w['recomputed_per_turn']}토큰", flush=True)
 
-    res["gguf"] = (gguf_bench(gguf_state, cfg, tok, args.types, args.ctx, args.new_tokens, args.reps, args.threads)
-                   if gguf_state is not None else None)
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
-            json.dump(res, f, ensure_ascii=False, indent=1)
-        print(f"저장: {args.out}")
+    res["gguf"] = gguf_bench(paths, args.ctx, args.new_tokens, args.reps, args.threads) if paths else None
 
 
 if __name__ == "__main__":

@@ -141,9 +141,17 @@ def test_sft_resume_is_bit_exact(tmp_path, tiny_tok):
     resume = str(tmp_path / "split" / "ci_tiny_sft" / "resume.pt")
     r = _run_sft(tmp_path, "split", "--base", base, "--stop-after", "5")
     assert "step 5에서 정지" in r.stdout and os.path.exists(resume)
+    # 재개 상태가 남은 폴더에서 --base로 새로 시작하면 멈춘다 — 그대로 두면 새 실행이 첫 저장 전에
+    # 죽었을 때 --resume이 이전 실행을 조용히 이어 간다 (지문은 시작 가중치를 보지 않는다)
+    r = _run_sft(tmp_path, "split", "--base", base, ok=False)
+    assert "남아 있습니다" in r.stdout + r.stderr and os.path.exists(resume)
     r = _run_sft(tmp_path, "split", "--resume", resume, "--stop-after", "13")
-    assert "재개" in r.stdout and "epoch 0, step 6부터" in r.stdout
+    assert "재개" in r.stdout and "epoch 0, step 6부터" in r.stdout and f"베이스 모델: {base} (step 0)" in r.stdout
     assert not os.path.exists(tmp_path / "split" / "ci_tiny_sft" / "epoch0.pt")  # 에폭 끝 처리 전에 끊겼다
+    # 이미 지난 step을 --stop-after로 주면 한 step도 더 돌지 않는다 (train.py와 같은 의미)
+    before = os.path.getmtime(resume)
+    r = _run_sft(tmp_path, "split", "--resume", resume, "--stop-after", "9")
+    assert "더 돌 것이 없습니다" in r.stdout and os.path.getmtime(resume) == before
     r = _run_sft(tmp_path, "split", "--resume", resume)
     assert "SFT 완료" in r.stdout and not os.path.exists(resume)  # 끝나면 재개 상태는 지운다
 
