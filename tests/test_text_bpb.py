@@ -54,6 +54,22 @@ def test_every_token_scored_once_whatever_the_window():
         score_text(s, DOCS, max_len=64, stride=64)
 
 
+def test_window_sweep_is_exhaustive_for_short_documents():
+    """문서 길이 1~40 · 창 2~12 · 가능한 모든 stride: 어떤 조합에서도 토큰을 빠뜨리거나 두 번 세지 않고
+    (합이 통째로 잰 값과 같다), 창보다 긴 입력을 모델에 넣지 않는다."""
+    s = BigramScorer()
+    base = s.encode("가나다라마바사아자차카타파하")
+    for n in range(1, 41):
+        ids = base[:n]
+        want = brute_force(s, ids)
+        for max_len in range(2, 13):
+            for stride in range(1, max_len):
+                s.calls.clear()
+                nats, scored = score_doc(s, ids, max_len, stride)
+                assert scored == n and nats == pytest.approx(want, rel=1e-5, abs=1e-6), (n, max_len, stride)
+                assert max(s.calls) <= max_len
+
+
 def test_bpb_is_bits_over_utf8_bytes_and_lossy_docs_are_dropped():
     s = BigramScorer()
     r = score_text(s, DOCS, max_len=32, stride=16)

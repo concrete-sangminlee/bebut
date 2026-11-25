@@ -9,7 +9,7 @@
    "ppl": 11.241605878453841,
    "nll": 2.419621706008911,
    "tokens": 16065,
-   "seconds": 120
+   "seconds": 141
   },
   "f16": {
    "ppl": 11.241544233845751,
@@ -20,7 +20,7 @@
    "top1_agreement": 0.9996265172735761,
    "bytes": 3447181408,
    "bits_per_weight": 16.028043908968254,
-   "seconds": 333
+   "seconds": 316
   },
   "q8_0": {
    "ppl": 11.273443501302866,
@@ -31,7 +31,19 @@
    "top1_agreement": 0.9675070028011205,
    "bytes": 1834258528,
    "bits_per_weight": 8.528584007489366,
-   "seconds": 263
+   "seconds": 728,
+   "torch_dequant": {
+    "ppl": 11.263250604983348,
+    "nll": 2.4215452671051025,
+    "tokens": 16065,
+    "ppl_change_pct": 0.19254123266314593,
+    "mean_abs_nll_diff": 0.032681904733181,
+    "top1_agreement": 0.9770930594460007
+   },
+   "vs_torch_dequant": {
+    "mean_abs_nll_diff": 0.03471294417977333,
+    "top1_agreement": 0.9763460939931529
+   }
   },
   "q4_0": {
    "ppl": 12.695460731228964,
@@ -42,7 +54,19 @@
    "top1_agreement": 0.8039838157485216,
    "bytes": 1129615456,
    "bits_per_weight": 5.252269604088442,
-   "seconds": 239
+   "seconds": 748,
+   "torch_dequant": {
+    "ppl": 12.68079209535386,
+    "nll": 2.540088415145874,
+    "tokens": 16065,
+    "ppl_change_pct": 12.802318747523667,
+    "mean_abs_nll_diff": 0.34760767221450806,
+    "top1_agreement": 0.8061002178649237
+   },
+   "vs_torch_dequant": {
+    "mean_abs_nll_diff": 0.03696347773075104,
+    "top1_agreement": 0.9755991285403051
+   }
   },
   "llama:q4_k_m": {
    "ppl": 12.233251556324436,
@@ -53,7 +77,7 @@
    "top1_agreement": 0.8464363523187053,
    "bytes": 1107241056,
    "bits_per_weight": 5.148237404099035,
-   "seconds": 211
+   "seconds": 739
   },
   "llama:q5_k_m": {
    "ppl": 11.70070487831165,
@@ -64,7 +88,7 @@
    "top1_agreement": 0.902583255524432,
    "bytes": 1257711712,
    "bits_per_weight": 5.847867042325275,
-   "seconds": 200
+   "seconds": 715
   },
   "llama:q6_k": {
    "ppl": 11.50522999249685,
@@ -75,7 +99,7 @@
    "top1_agreement": 0.9222533457827575,
    "bytes": 1417586784,
    "bits_per_weight": 6.591223532940654,
-   "seconds": 188
+   "seconds": 676
   }
  }
 }
