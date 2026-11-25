@@ -5,8 +5,9 @@
 (원본 `logs/inference_bench.json`).
 
 측정 환경: Intel Xeon 2.3GHz **4코어**(AVX512-BF16·AMX 지원), 메모리 15GB, GPU 없음, 다른 부하가
-없는 상태. 값마다 3번 재 중앙값을 썼고, 전체를 두 번 돌렸을 때 값의 차이는 5% 이내였습니다. 코어가 더
-많거나 메모리 대역폭이 큰 기계에선 전부 빨라지지만 순서는 같습니다.
+없는 상태. 값마다 3번 재 중앙값을 썼습니다. 전체를 세 번 돌렸을 때 디코드 속도는 PyTorch ±4%,
+llama.cpp ±2% 안에서 같았고, 첫 토큰 시간은 1.32~1.47초 / 0.18~0.23초 범위였습니다(표는 부하가 가장
+낮았던 실행의 값). 코어가 더 많거나 메모리 대역폭이 큰 기계에선 전부 빨라지지만 순서는 같습니다.
 
 ## 디코드 속도 (토큰 생성)
 
@@ -136,7 +137,7 @@ python serve.py --ckpt checkpoints/sft_1b/latest.pt
 ## 다시 재기
 
 ```bash
-python bench_infer.py --config base_1b --out logs/inference_bench.json   # 이 문서의 속도 표 전부 (메모리 약 8GB, 4분)
+python bench_infer.py --config base_1b --out logs/inference_bench.json   # 이 문서의 속도 표 전부 (메모리 6GB, 2~4분)
 python bench_infer.py --config mid_125m --types                          # 작은 모델로 빠르게, GGUF 생략
 python bench.py --config base_1b                                         # 학습 처리량 (GPU)
 ```

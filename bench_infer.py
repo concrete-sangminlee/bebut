@@ -13,7 +13,7 @@
   문맥 창      창이 찬 뒤 턴마다 새로 계산하는 토큰 수 (대화 80턴 모의, 토크나이저만 쓴다)
 
 사용:
-  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 약 8GB, 4분
+  python bench_infer.py --config base_1b --out logs/inference_bench.json   # 1.2B, 메모리 6GB, 2~4분
   python bench_infer.py --config mid_125m                                  # 작은 모델로 빠르게
 """
 
