@@ -8,11 +8,16 @@
   많은 배치의 토큰이 긴 답 배치의 토큰보다 몇 배 큰 가중치를 받는다
 - 길이별 묶음(group_by_length): 비슷한 길이끼리 배치를 만들어 패딩 낭비를 줄인다
 - 에폭마다 epoch{n}.pt를 남긴다 — 1.2B SFT에선 에폭0이 val loss·반복률 모두 더 나았다
+- 재개: save_every마다, 에폭 끝마다 resume.pt(가중치 + 옵티마이저 + 위치)를 남긴다. 죽으면
+  --resume으로 그 자리에서 잇는다 — 중단 없이 학습한 것과 가중치가 비트 단위로 같다. 예전엔
+  1.2B SFT(5.5시간)가 5시간째에 죽으면 처음부터 다시 해야 했다 (latest.pt를 --base로 주면
+  학습률 스케줄과 AdamW 모멘트가 초기화돼 다른 모델이 된다)
 
 사용 예:
   python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
   python sft.py --base ... --config sft_1b --data my_chats.jsonl   # 직접 만든 데이터
   python sft.py --base ... --config sft_1b --extra-data data/math_sft.jsonl   # 기본 데이터 + 산술
+  python sft.py --config sft_1b --resume checkpoints/sft_1b/resume.pt   # 중단된 학습 잇기 (데이터 인자는 똑같이)
 
 --data JSONL 한 줄 형식 (둘 중 하나):
   {"messages": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
@@ -20,12 +25,14 @@
 """
 
 import argparse
+import hashlib
 import importlib
 import json
 import math
 import os
 import random
 import time
+from array import array
 
 import torch
 
@@ -166,9 +173,51 @@ def save(model, step, config, path):
     return path
 
 
+RESUME_FILE = "resume.pt"
+TRAJECTORY_FREE = ("save_every", "log_every")  # 바꿔도 학습 결과가 달라지지 않는 설정
+
+
+def data_fingerprint(examples, tcfg) -> str:
+    """학습 데이터(토큰 id 전부)와 학습 설정의 지문. 재개할 때 다르면 거절한다 — 데이터나 배치
+    구성이 바뀐 채 이어가면 위치(에폭 안 몇 번째 step)가 다른 예제를 가리킨다."""
+    h = hashlib.sha256(json.dumps({k: v for k, v in tcfg.items() if k not in TRAJECTORY_FREE},
+                                  sort_keys=True).encode())
+    h.update(str(len(examples)).encode())
+    for ex in examples:  # SFT: (ids, mask) · DPO: (문맥, chosen, rejected)
+        for part in ex:
+            h.update(array("i", part).tobytes())
+    return h.hexdigest()[:16]
+
+
+def save_resume(ckpt_dir, model, opt, **state):
+    """재개용 전체 상태를 원자적으로 저장. state: config · fingerprint · epoch · step_in_epoch(다음에
+    돌 자리) · step(다음 전역 step) · bad(NaN 가드 연속 횟수) + 스크립트별 추가 값."""
+    path = os.path.join(ckpt_dir, RESUME_FILE)
+    torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(), **state}, path + ".tmp")
+    os.replace(path + ".tmp", path)
+    return path
+
+
+def load_resume(path, model, opt, config, fingerprint):
+    """resume.pt → 모델·옵티마이저에 싣고 상태 dict를 돌려준다. 설정·데이터가 다르면 멈춘다."""
+    ck = torch.load(path, map_location="cpu", weights_only=True)
+    if ck.get("config") != config:
+        raise SystemExit(f"{path}는 --config {ck.get('config')}로 저장됐습니다 (지금: {config})")
+    if ck.get("fingerprint") != fingerprint:
+        raise SystemExit(f"{path}: 학습 데이터나 설정이 저장할 때와 다릅니다 — 같은 --data/--extra-data/"
+                         "--limit과 같은 설정으로 재개하세요 (다르면 위치가 다른 예제를 가리킵니다)")
+    model.load_state_dict(ck.pop("model"))
+    opt.load_state_dict(ck.pop("optimizer"))
+    return ck
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", required=True, help="사전학습 체크포인트")
+    ap.add_argument("--base", default=None, help="사전학습 체크포인트 (--resume이면 필요 없다)")
+    ap.add_argument("--resume", default=None,
+                    help="중단된 학습의 resume.pt — 옵티마이저·위치까지 이어서 (데이터 인자·설정은 똑같이)")
+    ap.add_argument("--stop-after", type=int, default=None,
+                    help="이 step을 마치면 resume.pt를 저장하고 정상 종료 (GPU 양보·실험용)")
     ap.add_argument("--config", default="sft_1b")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
     ap.add_argument("--data", default=None, help="JSONL 데이터 (없으면 KoAlpaca + KULLM v2)")
@@ -178,6 +227,8 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="데이터셋별 예제 수 제한 (테스트용)")
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
+    if not args.base and not args.resume:
+        ap.error("--base(새로 시작) 또는 --resume(이어서)이 필요합니다")
 
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
@@ -198,11 +249,12 @@ def main():
 
     # CPU로 읽는다. 사전학습 체크포인트엔 옵티마이저 상태(1.2B 기준 약 10GB)도 들어 있어서
     # GPU로 바로 올리면 그만큼이 학습 내내 GPU에 남는다.
-    ckpt = load_checkpoint(args.base)
     model = GPT(conf.model)
-    model.load_state_dict(ckpt["model"])
-    print(f"베이스 모델: {args.base} (step {ckpt['step']})")
-    del ckpt
+    if not args.resume:
+        ckpt = load_checkpoint(args.base)
+        model.load_state_dict(ckpt["model"])
+        print(f"베이스 모델: {args.base} (step {ckpt['step']})")
+        del ckpt
     model = model.to(device)
     opt = torch.optim.AdamW(model.param_groups(tcfg["weight_decay"]),
                             lr=tcfg["max_lr"], betas=(0.9, 0.95), fused=(device_type == "cuda"))
@@ -222,17 +274,29 @@ def main():
     print(f"총 {max_steps} steps ({tcfg['epochs']} epochs, warmup {warmup}) | "
           f"길이별 묶음 {'켬' if group else '끔'}")
 
-    vl0 = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
-    print(f"SFT 전 val loss (베이스 모델): {vl0:.4f}", flush=True)
+    fingerprint = data_fingerprint(train_ex, tcfg)
+    start = {"epoch": 0, "step_in_epoch": 0, "step": 0, "bad": 0}
+    if args.resume:
+        start = load_resume(args.resume, model, opt, args.config, fingerprint)
+        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터", flush=True)
+    else:
+        vl0 = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
+        print(f"SFT 전 val loss (베이스 모델): {vl0:.4f}", flush=True)
+
+    def checkpoint(epoch, step_in_epoch, step):
+        """다음에 돌 자리를 적어 resume.pt로 남긴다."""
+        return save_resume(ckpt_dir, model, opt, config=args.config, fingerprint=fingerprint,
+                           epoch=epoch, step_in_epoch=step_in_epoch, step=step, bad=bad)
 
     model.train()
-    step = bad = 0
+    step, bad = start["step"], start["bad"]
     t0 = time.time()
-    for epoch in range(tcfg["epochs"]):
+    for epoch in range(start["epoch"], tcfg["epochs"]):
         batches = make_batches(train_ex, B, seed=1000 + epoch, group_by_length=group)
         print(f"epoch {epoch}: 패딩 효율 {padding_efficiency(train_ex, batches)*100:.1f}% "
               f"(실제 토큰 / 패딩 포함 토큰)", flush=True)
-        for step_in_epoch in range(steps_per_epoch):
+        first = start["step_in_epoch"] if epoch == start["epoch"] else 0
+        for step_in_epoch in range(first, steps_per_epoch):
             # linear warmup → cosine decay
             if step < warmup:
                 lr = tcfg["max_lr"] * (step + 1) / warmup
@@ -265,15 +329,26 @@ def main():
                       f"| {time.time()-t0:.0f}s", flush=True)
             if step > 0 and step % tcfg["save_every"] == 0:
                 path = save(model, step, args.config, os.path.join(ckpt_dir, "latest.pt"))
-                print(f"체크포인트 저장: {path} (step {step})", flush=True)
+                checkpoint(epoch, step_in_epoch + 1, step + 1)
+                print(f"체크포인트 저장: {path} + {RESUME_FILE} (step {step})", flush=True)
+            if args.stop_after is not None and step >= args.stop_after:
+                path = checkpoint(epoch, step_in_epoch + 1, step + 1)
+                print(f"--stop-after {args.stop_after}: step {step}에서 정지 — 이어서 하려면 같은 데이터 "
+                      f"인자에 --resume {path}", flush=True)
+                return
             step += 1
 
         vl = val_loss(model, val_ex, pad_id, B, device, device_type, tcfg.get("loss_chunk"))
         print(f"=== epoch {epoch} 종료 | val loss {vl:.4f} ===", flush=True)
         save(model, step - 1, args.config, os.path.join(ckpt_dir, f"epoch{epoch}.pt"))
         path = save(model, step - 1, args.config, os.path.join(ckpt_dir, "latest.pt"))
+        if epoch + 1 < tcfg["epochs"]:
+            checkpoint(epoch + 1, 0, step)
         print(f"체크포인트 저장: {path}, epoch{epoch}.pt (step {step - 1})", flush=True)
 
+    resume_path = os.path.join(ckpt_dir, RESUME_FILE)
+    if os.path.exists(resume_path):  # 끝났으니 재개 상태(옵티마이저 포함, 1.2B면 14GB)는 지운다
+        os.remove(resume_path)
     print("SFT 완료 — python sample.py --ckpt", os.path.join(ckpt_dir, "latest.pt"), "--chat")
 
 

@@ -107,3 +107,63 @@ def test_instruction_row_keeps_same_rows_as_old_code():
         assert (m is not None) == old_rule(inst, inp, out), (inst, inp, out)
         if m:
             assert m[0]["content"] == inst + (f"\n\n{inp}" if inp else "")
+
+
+def _run_sft(tmp, out, *extra, ok=True):
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "sft.py"), "--config", "ci_tiny_sft",
+                        "--tokenizer", str(tmp / "tok.json"), "--data", str(tmp / "data.jsonl"),
+                        "--out-dir", str(tmp / out), *extra],
+                       cwd=tmp, env={**os.environ, "PYTHONPATH": ROOT},
+                       capture_output=True, text=True, timeout=300)
+    assert (r.returncode == 0) == ok, r.stdout[-2000:] + r.stderr[-2000:]
+    return r
+
+
+def test_sft_resume_is_bit_exact(tmp_path, tiny_tok):
+    """끊고 재개한 SFT의 가중치가 중단 없이 학습한 것과 비트 단위로 같다.
+
+    에폭 중간(step 5)과 에폭 마지막 step(13 — val·epoch0.pt 저장 직전)에서 끊는다. 예전엔 재개
+    수단이 없어서 latest.pt를 --base로 줄 수밖에 없었고, 그러면 학습률 스케줄과 AdamW 모멘트가
+    초기화돼 다른 모델이 됐다."""
+    from configs.ci_tiny import model as mcfg
+    from model import GPT
+
+    tiny_tok.save(str(tmp_path / "tok.json"))
+    torch.manual_seed(0)
+    base = str(tmp_path / "base.pt")
+    torch.save({"model": GPT(mcfg).state_dict(), "step": 0, "config": "ci_tiny"}, base)
+    with open(tmp_path / "data.jsonl", "w") as f:
+        for i in range(140):  # train 112 → 에폭당 14 step, 2 에폭
+            f.write(json.dumps({"instruction": f"질문 {i % 11}", "output": f"답은 {i % 5}번입니다. 안녕하세요."},
+                               ensure_ascii=False) + "\n")
+
+    _run_sft(tmp_path, "full", "--base", base)
+    resume = str(tmp_path / "split" / "ci_tiny_sft" / "resume.pt")
+    r = _run_sft(tmp_path, "split", "--base", base, "--stop-after", "5")
+    assert "step 5에서 정지" in r.stdout and os.path.exists(resume)
+    r = _run_sft(tmp_path, "split", "--resume", resume, "--stop-after", "13")
+    assert "재개" in r.stdout and "epoch 0, step 6부터" in r.stdout
+    assert not os.path.exists(tmp_path / "split" / "ci_tiny_sft" / "epoch0.pt")  # 에폭 끝 처리 전에 끊겼다
+    r = _run_sft(tmp_path, "split", "--resume", resume)
+    assert "SFT 완료" in r.stdout and not os.path.exists(resume)  # 끝나면 재개 상태는 지운다
+
+    for name in ("epoch0.pt", "epoch1.pt", "latest.pt"):
+        a = torch.load(tmp_path / "full" / "ci_tiny_sft" / name)
+        b = torch.load(tmp_path / "split" / "ci_tiny_sft" / name)
+        assert a["step"] == b["step"]
+        for k in a["model"]:
+            assert torch.equal(a["model"][k], b["model"][k]), (name, k)
+    # 끊긴 실행과 이어 한 실행의 val loss가 중단 없는 실행의 에폭별 val loss와 같다
+    vals = re.findall(r"epoch (\d) 종료 \| val loss ([0-9.]+)", r.stdout)
+    full = re.findall(r"epoch (\d) 종료 \| val loss ([0-9.]+)",
+                      _run_sft(tmp_path, "full2", "--base", base).stdout)
+    assert vals == full and len(vals) == 2
+
+    # 데이터가 바뀌면 재개를 거절한다 (위치가 다른 예제를 가리키게 된다)
+    _run_sft(tmp_path, "other", "--base", base, "--stop-after", "2")
+    with open(tmp_path / "data.jsonl", "a") as f:
+        f.write(json.dumps({"instruction": "새 질문", "output": "새 답입니다. 안녕하세요."}, ensure_ascii=False) + "\n")
+    r = _run_sft(tmp_path, "other", "--resume", str(tmp_path / "other" / "ci_tiny_sft" / "resume.pt"), ok=False)
+    assert "데이터나 설정이 저장할 때와 다릅니다" in r.stdout + r.stderr
+    r = _run_sft(tmp_path, "none", ok=False)  # --base도 --resume도 없으면
+    assert "--base" in r.stderr

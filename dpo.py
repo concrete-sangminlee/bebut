@@ -29,6 +29,7 @@ bf16으로 들고 있으면(GPU 2.4GB) 정책(fp32 가중치 + autocast)과 연�
 
 사용:
   python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.jsonl
+  python dpo.py --config dpo_1b --data prefs.jsonl --resume checkpoints/dpo_1b/resume.pt   # 중단된 학습 잇기
 """
 
 import argparse
@@ -45,6 +46,7 @@ import torch.nn.functional as F
 from chat import encode_prompt
 from model import GPT
 from sample import device_type_of, load_checkpoint, pick_device
+from sft import RESUME_FILE, data_fingerprint, load_resume, save_resume
 from tokenizer.bpe import ByteBPETokenizer
 from train import step_if_finite
 
@@ -225,7 +227,12 @@ def save(model, step, config, path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", required=True, help="시작점이자 참조 모델 (보통 SFT 체크포인트)")
+    ap.add_argument("--base", default=None,
+                    help="시작점이자 참조 모델 (보통 SFT 체크포인트). --resume이면 필요 없다")
+    ap.add_argument("--resume", default=None,
+                    help="중단된 학습의 resume.pt — 옵티마이저·위치·참조 로그확률까지 이어서 (같은 --data·설정으로)")
+    ap.add_argument("--stop-after", type=int, default=None,
+                    help="이 step을 마치면 resume.pt를 저장하고 정상 종료")
     ap.add_argument("--config", default="dpo_1b")
     ap.add_argument("--data", required=True, help="선호 쌍 JSONL 또는 hf:<dataset>")
     ap.add_argument("--tokenizer", default="tokenizer/tokenizer.json")
@@ -233,6 +240,8 @@ def main():
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
+    if not args.base and not args.resume:
+        ap.error("--base(새로 시작) 또는 --resume(이어서)이 필요합니다")
 
     conf = importlib.import_module(f"configs.{args.config}")
     tcfg = conf.train
@@ -246,11 +255,12 @@ def main():
     val, train = pairs[:n_val], pairs[n_val:]
     print(f"선호 쌍 train {len(train)} / val {len(val)} (형식 불일치·너무 짧아 버린 행 {skipped})")
 
-    ckpt = load_checkpoint(args.base)
     policy = GPT(conf.model)
-    policy.load_state_dict(ckpt["model"])
-    print(f"시작 모델: {args.base} (step {ckpt.get('step')})")
-    del ckpt
+    if not args.resume:
+        ckpt = load_checkpoint(args.base)
+        policy.load_state_dict(ckpt["model"])
+        print(f"시작 모델: {args.base} (step {ckpt.get('step')})")
+        del ckpt
     policy = policy.to(device)
     opt = torch.optim.AdamW(policy.param_groups(tcfg["weight_decay"]), lr=tcfg["max_lr"],
                             betas=(0.9, 0.95), fused=(device_type == "cuda"))
@@ -266,19 +276,32 @@ def main():
     os.makedirs(ckpt_dir, exist_ok=True)
     print(f"총 {max_steps} steps | β={beta} | step당 {B * accum}쌍")
 
-    t_ref = time.time()
-    train_ref = reference_logprobs(policy, train, pad_id, B, device, device_type)
-    val_ref = reference_logprobs(policy, val, pad_id, B, device, device_type)
-    print(f"참조 로그확률 계산 {len(train) + len(val)}쌍, {time.time() - t_ref:.0f}초", flush=True)
-    v0 = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
-    print(f"시작 val: loss {v0['loss']:.4f} (정책=참조라 ln2={math.log(2):.4f}여야 한다)", flush=True)
+    fingerprint = data_fingerprint(train + val, tcfg)
+    start = {"epoch": 0, "step_in_epoch": 0, "step": 0, "bad": 0}
+    if args.resume:
+        # 참조 로그확률은 시작 모델로 계산한 값이라 resume.pt에 같이 들어 있다 (정책은 이미 움직였다)
+        start = load_resume(args.resume, policy, opt, args.config, fingerprint)
+        train_ref, val_ref = start.pop("train_ref"), start.pop("val_ref")
+        print(f"재개: {args.resume} — epoch {start['epoch']}, step {start['step']}부터", flush=True)
+    else:
+        t_ref = time.time()
+        train_ref = reference_logprobs(policy, train, pad_id, B, device, device_type)
+        val_ref = reference_logprobs(policy, val, pad_id, B, device, device_type)
+        print(f"참조 로그확률 계산 {len(train) + len(val)}쌍, {time.time() - t_ref:.0f}초", flush=True)
+        v0 = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
+        print(f"시작 val: loss {v0['loss']:.4f} (정책=참조라 ln2={math.log(2):.4f}여야 한다)", flush=True)
 
-    step, bad, t0 = 0, 0, time.time()
+    def checkpoint(epoch, step_in_epoch, step):
+        return save_resume(ckpt_dir, policy, opt, config=args.config, fingerprint=fingerprint,
+                           epoch=epoch, step_in_epoch=step_in_epoch, step=step, bad=bad,
+                           train_ref=train_ref, val_ref=val_ref)
+
+    step, bad, t0 = start["step"], start["bad"], time.time()
     policy.train()
-    for epoch in range(tcfg["epochs"]):
+    for epoch in range(start["epoch"], tcfg["epochs"]):
         order = list(range(len(train)))
         random.Random(1000 + epoch).shuffle(order)
-        for s in range(steps_per_epoch):
+        for s in range(start["step_in_epoch"] if epoch == start["epoch"] else 0, steps_per_epoch):
             # warmup 후 cosine decay — DPO는 학습률에 민감해 SFT보다 한참 낮게 쓴다
             if step < warmup:
                 lr = tcfg["max_lr"] * (step + 1) / warmup
@@ -307,6 +330,12 @@ def main():
                       f"| {time.time() - t0:.0f}s", flush=True)
             if step > 0 and step % tcfg["save_every"] == 0:
                 save(policy, step, args.config, os.path.join(ckpt_dir, "latest.pt"))
+                checkpoint(epoch, s + 1, step + 1)
+            if args.stop_after is not None and step >= args.stop_after:
+                path = checkpoint(epoch, s + 1, step + 1)
+                print(f"--stop-after {args.stop_after}: step {step}에서 정지 — 이어서 하려면 같은 --data에 "
+                      f"--resume {path}", flush=True)
+                return
             step += 1
         v = evaluate(policy, val, val_ref, pad_id, B, device, device_type, beta, ls)
         print(f"=== epoch {epoch} 종료 | val loss {v['loss']:.4f} | 보상 정확도 {v['accuracy']:.3f} "
@@ -314,6 +343,11 @@ def main():
               f"rejected {v['reward_rejected']:+.3f}) ===", flush=True)
         save(policy, step - 1, args.config, os.path.join(ckpt_dir, f"epoch{epoch}.pt"))
         save(policy, step - 1, args.config, os.path.join(ckpt_dir, "latest.pt"))
+        if epoch + 1 < tcfg["epochs"]:
+            checkpoint(epoch + 1, 0, step)
+    resume_path = os.path.join(ckpt_dir, RESUME_FILE)
+    if os.path.exists(resume_path):  # 끝났으니 재개 상태는 지운다
+        os.remove(resume_path)
     print("DPO 완료 — python sample.py --ckpt", os.path.join(ckpt_dir, "latest.pt"), "--chat")
 
 
