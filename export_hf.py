@@ -151,6 +151,68 @@ def convert_state_dict(sd: dict[str, torch.Tensor], cfg) -> dict[str, torch.Tens
     return out
 
 
+def import_state_dict(hf_sd: dict[str, torch.Tensor], cfg) -> dict[str, torch.Tensor]:
+    """convert_state_dict의 역변환: Qwen3 키·레이아웃 → bebut state_dict.
+
+    구조가 같은(Qwen3) 학습된 공개 모델을 이 저장소의 GPT로 읽는 데 쓴다 — 체크포인트 없이도
+    추론 코드와 양자화기를 '학습된 가중치'로 검증할 수 있다 (evals/quant_quality.py).
+    q/k projection 행과 q_norm·k_norm은 내보낼 때의 재배열을 되돌린다.
+    """
+    hd = cfg.dim // cfg.n_heads
+    inv = torch.argsort(rope_permutation(hd))
+    out: dict[str, torch.Tensor] = {}
+    used: set[str] = set()
+
+    def take(k):
+        used.add(k)
+        return hf_sd[k]
+
+    out["tok_emb.weight"] = take("model.embed_tokens.weight")
+    out["lm_head.weight"] = out["tok_emb.weight"]  # tying
+    if "lm_head.weight" in hf_sd:
+        used.add("lm_head.weight")
+        if not torch.equal(hf_sd["lm_head.weight"], hf_sd["model.embed_tokens.weight"]):
+            raise ValueError("lm_head와 embed_tokens가 다르다 — 임베딩을 공유하지 않는 모델은 읽을 수 없다")
+    for i in range(cfg.n_layers):
+        b, h = f"blocks.{i}.", f"model.layers.{i}."
+        out[b + "attn_norm.weight"] = take(h + "input_layernorm.weight")
+        out[b + "attn.wq.weight"] = _permute_rows(take(h + "self_attn.q_proj.weight"), cfg.n_heads, hd, inv)
+        out[b + "attn.wk.weight"] = _permute_rows(take(h + "self_attn.k_proj.weight"), cfg.n_kv_heads, hd, inv)
+        out[b + "attn.wv.weight"] = take(h + "self_attn.v_proj.weight")
+        out[b + "attn.wo.weight"] = take(h + "self_attn.o_proj.weight")
+        out[b + "attn.q_norm.weight"] = take(h + "self_attn.q_norm.weight")[inv]
+        out[b + "attn.k_norm.weight"] = take(h + "self_attn.k_norm.weight")[inv]
+        out[b + "ffn_norm.weight"] = take(h + "post_attention_layernorm.weight")
+        out[b + "ffn.w_gate.weight"] = take(h + "mlp.gate_proj.weight")
+        out[b + "ffn.w_up.weight"] = take(h + "mlp.up_proj.weight")
+        out[b + "ffn.w_down.weight"] = take(h + "mlp.down_proj.weight")
+    out["final_norm.weight"] = take("model.norm.weight")
+    unknown = set(hf_sd) - used
+    if unknown:
+        raise ValueError(f"변환 규칙이 없는 가중치: {sorted(unknown)[:10]}")
+    return out
+
+
+def model_config_from_hf(c: dict, max_seq_len: int | None = None):
+    """HF Qwen3 config.json → ModelConfig. 이 저장소의 GPT가 표현하지 못하는 설정이면 실패한다."""
+    from model import ModelConfig
+
+    hd = c.get("head_dim") or c["hidden_size"] // c["num_attention_heads"]
+    problems = [msg for bad, msg in [
+        (hd * c["num_attention_heads"] != c["hidden_size"], f"head_dim {hd} × heads ≠ hidden_size (예: Qwen3-0.6B)"),
+        (c.get("attention_bias"), "attention bias"), (not c.get("tie_word_embeddings", True), "임베딩 비공유"),
+        (c.get("hidden_act", "silu") != "silu", f"활성 함수 {c.get('hidden_act')}")] if bad]
+    if problems:
+        raise ValueError("이 저장소의 GPT로 읽을 수 없는 구조: " + ", ".join(problems))
+    # config.json은 rope_theta를 최상위에, 새 transformers의 to_dict()는 rope_parameters 안에 둔다
+    theta = c.get("rope_theta") or (c.get("rope_parameters") or {}).get("rope_theta") or 10000.0
+    return ModelConfig(vocab_size=c["vocab_size"], dim=c["hidden_size"], n_layers=c["num_hidden_layers"],
+                       n_heads=c["num_attention_heads"], n_kv_heads=c["num_key_value_heads"],
+                       max_seq_len=max_seq_len or c.get("max_position_embeddings", 2048),
+                       rope_theta=float(theta), norm_eps=float(c["rms_norm_eps"]),
+                       ffn_dim=c["intermediate_size"])
+
+
 def hf_config(cfg, tok: ByteBPETokenizer | None, dtype_name: str, chat: bool) -> dict:
     sp = tok.special_tokens if tok else {}
     eos = sp.get("<|im_end|>" if chat else "<|eos|>")
