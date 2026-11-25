@@ -64,3 +64,34 @@ def test_bf16_detection_requires_real_bf16_instructions(monkeypatch):
         monkeypatch.setattr(torch.cpu, "_is_avx512_bf16_supported", lambda v=avx512_bf16: v, raising=False)
         monkeypatch.setattr(torch.cpu, "_is_amx_tile_supported", lambda v=amx: v, raising=False)
         assert sample.cpu_has_fast_bf16() is want
+
+
+def test_bench_infer_smoke(tmp_path):
+    """추론 벤치 스크립트가 작은 설정에서 끝까지 돌고 결과 형식이 맞는다 (GGUF 없이)."""
+    import json
+
+    out = tmp_path / "bench.json"
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "bench_infer.py"), "--config", "ci_tiny", "--reps", "1",
+                        "--threads", "1", "--types", "--out", str(out)], capture_output=True, text=True,
+                       timeout=300, env={**os.environ, "PYTHONPATH": ROOT}, cwd=ROOT)
+    assert r.returncode == 0, r.stderr[-2000:]
+    res = json.load(open(out, encoding="utf-8"))
+    assert res["torch"]["fp32_decode_tok_s"] > 0 and res["torch"]["bf16_decode_tok_s"] > 0
+    assert res["ttft"]["no_cache_s"] > 0 and res["ttft"]["prefix_cache_s"] > 0
+    assert set(res["sampler_ms"]) == {"greedy", "top_p_0.95_peaked", "top_p_0.95_flat", "top_p_1.0"}
+    assert res["env"]["threads"] == 1 and res["gguf"] is None
+    assert res["window_reuse"] is None  # 문맥이 짧은 설정에서는 대화 모의를 하지 않는다
+
+
+def test_window_reuse_simulation_uses_the_given_context():
+    """문맥 창 모의: 창이 찬 뒤에도 대부분의 문맥을 캐시에서 재사용하고, 문맥 길이를 결과에 남긴다.
+    예전엔 재는 설정과 무관하게 늘 2048로 모의해, 문맥 1024인 설정에 2048의 수치를 적었다."""
+    import bench_infer
+    from tokenizer.bpe import ByteBPETokenizer
+
+    tok = ByteBPETokenizer.load(os.path.join(ROOT, "tokenizer", "tokenizer.json"))
+    big, small = bench_infer.window_reuse(tok, 2048, 256), bench_infer.window_reuse(tok, 1024, 256)
+    assert big["max_seq_len"] == 2048 and small["max_seq_len"] == 1024
+    assert big["turns_measured"] > 30 and big["reused_per_turn"] > 3 * big["recomputed_per_turn"]
+    assert small["reused_per_turn"] < big["reused_per_turn"] / 2  # 창이 작으면 재사용할 문맥도 작다
+    assert small["reused_per_turn"] + small["recomputed_per_turn"] <= 1024 - 256

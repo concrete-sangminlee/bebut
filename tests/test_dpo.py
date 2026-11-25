@@ -133,3 +133,45 @@ def test_precomputed_reference_gives_exact_ln2_under_autocast():
     assert refs.shape == (10, 2)
     v = evaluate(model, pairs, refs, 0, 4, "cpu", "cpu", beta=0.1, ls=0.0)
     assert abs(v["loss"] - math.log(2)) < 1e-6 and abs(v["margin"]) < 1e-6
+
+
+def test_dpo_resume_is_bit_exact(tmp_path, tiny_tok):
+    """끊고 재개한 DPO가 중단 없는 학습과 가중치까지 같다. 참조 로그확률은 시작 모델로 계산한
+    값이라 resume.pt에 같이 저장된다(재개 시점의 정책으로 다시 계산하면 보상 기준이 바뀐다)."""
+    from configs.ci_tiny import model as mcfg
+    from model import GPT
+
+    tiny_tok.save(str(tmp_path / "tok.json"))
+    torch.manual_seed(0)
+    torch.save({"model": GPT(mcfg).state_dict(), "step": 0, "config": "ci_tiny"}, tmp_path / "base.pt")
+    with open(tmp_path / "prefs.jsonl", "w") as f:
+        for i in range(160):
+            f.write(json.dumps({"prompt": f"질문 {i % 9}", "chosen": f"안녕하세요. 저는 {i % 4}번 학생입니다.",
+                                "rejected": "The quick brown fox."}, ensure_ascii=False) + "\n")
+
+    def run(out, *extra, ok=True):
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "dpo.py"), "--config", "ci_tiny_dpo",
+                            "--data", str(tmp_path / "prefs.jsonl"), "--tokenizer", str(tmp_path / "tok.json"),
+                            "--out-dir", str(tmp_path / out), *extra],
+                           cwd=tmp_path, env={**os.environ, "PYTHONPATH": ROOT},
+                           capture_output=True, text=True, timeout=300)
+        assert (r.returncode == 0) == ok, r.stdout[-2000:] + r.stderr[-2000:]
+        return r.stdout + r.stderr
+
+    base = str(tmp_path / "base.pt")
+    full = run("full", "--base", base)
+    resume = str(tmp_path / "split" / "ci_tiny_dpo" / "resume.pt")
+    assert "step 7에서 정지" in run("split", "--base", base, "--stop-after", "7")
+    # 재개 상태가 남은 폴더에서 새로 시작하지 않는다 (남의 참조 로그확률로 이어 가게 된다)
+    assert "남아 있습니다" in run("split", "--base", base, ok=False)
+    assert "더 돌 것이 없습니다" in run("split", "--resume", resume, "--stop-after", "3")
+    log = run("split", "--resume", resume)
+    assert "참조 로그확률 계산" not in log and "DPO 완료" in log and not os.path.exists(resume)
+    assert f"시작 모델: {base} (step 0)" in log
+    a = torch.load(tmp_path / "full" / "ci_tiny_dpo" / "latest.pt")
+    b = torch.load(tmp_path / "split" / "ci_tiny_dpo" / "latest.pt")
+    assert a["step"] == b["step"]
+    for k in a["model"]:
+        assert torch.equal(a["model"][k], b["model"][k]), k
+    pat = r"epoch (\d) 종료 \| val loss ([0-9.]+) \| 보상 정확도 ([0-9.]+)"
+    assert re.findall(pat, log) == re.findall(pat, full)[-len(re.findall(pat, log)):]

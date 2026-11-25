@@ -24,7 +24,8 @@ import time
 import torch
 
 from chat import encode_prompt
-from eval import BENCHMARKS, load_exclude, run_benchmarks, wilson_ci
+from eval import BENCHMARKS, load_exclude, run_benchmarks
+from evals.stats import print_comparisons, wilson_ci
 from sample import load_model, pick_device
 
 DEFAULT_MODELS = ["베이스=checkpoints/base_1b/latest.pt",
@@ -153,6 +154,7 @@ def main():
                   f"채점 {r['n_scored']}문항, 오염 제외 {r['excluded']}) | 유형별 {r['by_type']}")
         json.dump(saved, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
         print(f"저장: {args.out}")
+        print_comparisons(saved)
         return
     results, answers_md = {}, ["# SFT 평가 — 모델별 답변\n"]
     for spec in args.models:
@@ -182,9 +184,11 @@ def main():
         if device == "cuda":
             torch.cuda.empty_cache()
 
+    # 먼저 저장한다 — 몇 시간 잰 결과를 출력 단계의 오류로 잃지 않게
     json.dump(results, open(args.out, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     open(args.answers_out, "w", encoding="utf-8").write("\n".join(answers_md))
     print(f"\n저장: {args.out}, {args.answers_out}", flush=True)
+    print_comparisons(results)  # 모델 사이의 차이가 잡음보다 큰지 (같은 문항 짝 비교)
 
 
 if __name__ == "__main__":

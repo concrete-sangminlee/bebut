@@ -1,8 +1,9 @@
-"""문서에 적힌 명령의 플래그가 실제 스크립트에 있는지 확인한다.
+"""문서와 셸 스크립트에 적힌 명령의 플래그가 실제 스크립트에 있는지 확인한다.
 
-README · docs/*.md · docs/index.html의 `python X.py --flag …` / `python -m pkg.mod --flag …` 줄을 모아,
-각 스크립트의 --help에 그 플래그가 있는지 본다. 예전에 문서는 바뀐 플래그·기본값을 따라가지
-못했다(예: 인자 없는 `python -m evals.contamination`을 전체 대조처럼 적었다).
+README · docs/*.md · docs/index.html · 저장소의 *.sh에서 `python X.py --flag …` / `python -m pkg.mod --flag …`
+(셸 스크립트의 `"$PY" X.py …` 포함) 줄을 모아, 각 스크립트의 --help에 그 플래그가 있는지 본다.
+예전에 문서는 바뀐 플래그·기본값을 따라가지 못했다(예: 인자 없는 `python -m evals.contamination`을
+전체 대조처럼 적었다).
 """
 
 import functools
@@ -16,7 +17,7 @@ import pytest
 from tests.conftest import ROOT
 
 DOCS = ["README.md", "docs/RESULTS.md", "docs/INFERENCE.md", "docs/OPERATIONS.md", "docs/index.html",
-        "CONTRIBUTING.md"]
+        "CONTRIBUTING.md"] + sorted(f for f in os.listdir(ROOT) if f.endswith(".sh"))
 
 
 def doc_commands():
@@ -27,7 +28,8 @@ def doc_commands():
             continue
         text = open(path, encoding="utf-8").read().replace("\\\n", " ")  # 줄 이어쓰기
         for line in text.splitlines():
-            for m in re.finditer(r"python3?\s+(-m\s+([\w.]+)|([\w/]+\.py))((?:\s+[^\s`|&;<>#]+)*)", line):
+            for m in re.finditer(r"(?:python3?|\"\$PY\")\s+(-m\s+([\w.]+)|([\w/]+\.py))((?:\s+[^\s`|&;<>#]+)*)",
+                                 line):
                 target = m.group(2) or m.group(3)
                 flags = re.findall(r"(?<!\S)(--[a-z][\w-]*)", m.group(4) or "")
                 if flags:

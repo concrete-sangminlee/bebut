@@ -31,7 +31,8 @@
 > 첫 단어에 붙어 토큰화되는데(`" 예"`), 경계를 문맥만 따로 토큰화한 길이로 잡았기 때문입니다.
 > 특히 **BoolQ는 모델을 측정한 적이 없습니다** — `"예"`는 채점 토큰이 0개였습니다.
 > 버그는 고쳤고(회귀 테스트 포함) 재측정은 체크포인트가 있는 서버에서
-> `python final_eval.py`, `python sft_eval.py`로 합니다.
+> `./remeasure.sh` 한 번으로 합니다 (`final_eval.py` · `sft_eval.py` 재실행 + 원문 기준 BPB +
+> 양자화 품질, 끝에 같은 문항끼리의 짝 비교까지).
 > 경위와 영향은 [docs/RESULTS.md §0](docs/RESULTS.md#0-채점-버그-정정-2026-11)에 있습니다.
 > perplexity와 대화 평가는 이 버그와 무관합니다.
 
@@ -54,6 +55,17 @@
 
 † 첫 토큰 누락 버그가 있는 채점기로 측정 — 재측정 전까지 참고값입니다.
 ‡ 1.2B 값은 held-out이 아닙니다. val 문서의 76%(위키·영어 Edu)를 annealing이 다시 학습했습니다. 완전한 held-out은 annealing 직전의 18.84까지입니다([RESULTS §2 정정](docs/RESULTS.md#2-annealing-효과-전체-문항-gpu-같은-조건--kobest-)).
+
+**이 표의 차이를 읽는 법.** 대화 평가는 30문항이라 베이스 66.7%와 SFT 최종 70.0%는 한 문항 차이이고
+(같은 문항 짝 비교 p=1.0), KOBEST의 SFT 전후 차이도 모두 p>0.7입니다 — SFT가 정답률을 올렸다는
+증거도, 깎았다는 증거도 없습니다. 멈춤·반복의 변화도 36문항 중 1~3문항 차이(p=0.25~1.0)라 방향만
+읽을 수 있습니다 (`python compare_evals.py logs/sft_eval.json --a 베이스 --b "SFT 최종"`,
+[RESULTS §3](docs/RESULTS.md)).
+
+**다른 모델과의 비교**는 토크나이저와 무관한 원문 기준 bits-per-byte로 합니다. 같은 한국어 웹
+글(FineWeb-2 test, 300KB)에서 공개 모델의 기준값은 42dot-PLM-1.3B 0.692 · Qwen2.5-1.5B 0.937 ·
+Polyglot-ko-1.3B 0.957 · Qwen2.5-0.5B 1.118이고, bebut은 같은 글로 서버에서 재야 합니다
+([RESULTS §9](docs/RESULTS.md#9-다른-모델과-같은-글로-비교--원문-기준-bits-per-byte)).
 
 유형별로는 **사실 100%, 지시 33%, 계산 0%**입니다. 자세한 수치와 해석은
 [docs/RESULTS.md](docs/RESULTS.md), 모델별 답변 전문은
@@ -85,18 +97,20 @@ python serve.py --ckpt checkpoints/sft_1b/latest.pt
 # HuggingFace 형식(Qwen3ForCausalLM 호환)으로 내보내기 → transformers · vLLM
 python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
 
-# GGUF로 내보내기 → llama.cpp · Ollama · LM Studio (Q8_0이면 1.2B가 1.27GB)
+# GGUF로 내보내기 → llama.cpp · Ollama · LM Studio (Q8_0이면 1.2B가 1.28GB)
 python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-sft.gguf --type q8_0
 cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 ```
 
-**CPU에서는 GGUF Q8_0 + llama.cpp가 가장 빠릅니다** — 1.2B 실측(4코어) 16.4 tok/s로 PyTorch fp32
-(8.2)의 2.0배입니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.1 tok/s)을 씁니다.
+**CPU에서는 GGUF Q8_0 + llama.cpp를 권합니다** — 1.2B 실측(4코어) 15.9 tok/s로 PyTorch fp32(8.3)의
+1.9배이고, 구조가 같은 학습된 공개 모델(Qwen3-1.7B)에서 잰 perplexity 손실이 0.3%입니다. 4비트 Q4_0은
+18.8 tok/s로 더 빠르지만 같은 측정에서 perplexity가 13% 올랐습니다 — 작은 모델에서 4비트는 공짜가
+아닙니다. PyTorch 경로도 bf16 명령이 있는 CPU에선 자동으로 bf16(12.4 tok/s)을 씁니다.
 측정 전체와 권장 구성은 [docs/INFERENCE.md](docs/INFERENCE.md)에 있습니다.
 
 대화 CLI와 서버는 **턴 사이에 KV 캐시를 재사용**합니다. 매 턴 기록 전체를 다시 계산하지 않고
 지난 턴과 달라진 부분만 prefill하므로, 대화가 길어져도 첫 토큰까지의 시간이 늘지 않습니다
-(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 2.04초 → 0.27초). 기록이 문맥 창을 채운
+(1.2B, CPU 4코어, 기록 1,060토큰에서 첫 토큰까지 1.39초 → 0.23초). 기록이 문맥 창을 채운
 뒤에는 오래된 턴을 user 턴 경계에서, 창의 1/4 단위로 묶어 버립니다. 그래서 자르는 자리가 몇
 턴씩 유지되고 그동안 캐시가 계속 재사용됩니다(80턴 모의 대화에서 창이 찬 뒤 턴당 새로 계산하는
 토큰 1,720 → 276). fp32에선 출력이
@@ -189,11 +203,13 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
 - **서빙** — OpenAI 호환 HTTP 서버와 웹 UI를 표준 라이브러리로, 요청 사이 KV 캐시 재사용
   ([serve.py](serve.py), [web/](web/))
 - **내보내기** — safetensors·HF tokenizer.json ([export_hf.py](export_hf.py)), GGUF v3와
-  Q8_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현
+  Q8_0 · Q4_0 양자화 ([export_gguf.py](export_gguf.py))를 직접 구현 (gguf-py 참조 구현과 바이트 단위로 같음)
 - **DPO** — 참조 모델 대비 선호 학습, 응답 위치만 청크 단위 lm_head ([dpo.py](dpo.py))
 - **평가** — perplexity·bits-per-byte, KOBEST·**KMMLU(45과목)·HAE-RAE Bench(6범주)**
   (바이트 오프셋 기반 선택지 경계, 배치 채점, 비조건부 정규화, 예측 쏠림 감지, 긴 문맥 왼쪽 자르기),
-  오염 검사 ([eval.py](eval.py), [evals/](evals/))
+  오염 검사, 원문 기준 BPB로 다른 모델과 비교 ([eval.py](eval.py), [evals/](evals/))
+- **통계** — Wilson 구간, 같은 문항끼리의 정확 McNemar 검정, 차이의 95% 구간을 표준 라이브러리로
+  ([evals/stats.py](evals/stats.py)). 평가 결과에 문항별 정오를 남겨 두 모델을 짝 비교한다
 
 ## 전체 재현 절차
 
@@ -224,9 +240,10 @@ python -m data.prepare_anneal --tokens 5.2e9 --workers 40
 python final_eval.py --exclude-ids evals/contaminated_ids.json   # → logs/final_eval_v2.json
 python eval.py --ckpt checkpoints/base_1b/latest.pt --bench kmmlu --format mc   # 리더보드 형식
 
-# 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다
+# 6) SFT (약 5.5시간) — 에폭마다 epoch{n}.pt도 남긴다. 죽으면 --resume checkpoints/sft_1b/resume.pt
 python sft.py --base checkpoints/base_1b/latest.pt --config sft_1b
 python sft_eval.py
+python compare_evals.py logs/sft_eval.json --a 베이스 --b "SFT 최종"   # 차이가 표본 오차보다 큰가
 
 # 6.5) (선택) 산술 보완 SFT, DPO — 위 "다음 단계" 참고
 
@@ -245,24 +262,28 @@ python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut-1.2b-
 ```
 model.py                 트랜스포머 (RMSNorm/RoPE/GQA/QK-Norm/SwiGLU) + 청크 CE + KV 캐시·스트리밍 생성
 train.py                 사전학습 루프 (WSD, bf16, compile, annealing 전환, 원자적 체크포인트, --stop-after)
-sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, 길이별 묶음, --data JSONL)
+sft.py                   SFT (assistant 토큰만 loss, 토큰 가중 누적, 길이별 묶음, --data JSONL, --resume)
 chat.py                  대화 템플릿 단일 정의 (학습·추론·평가 공유) + 스트리밍 디코더
 sample.py                생성 / --chat 스트리밍 대화
 serve.py, web/           OpenAI 호환 API 서버 + 웹 채팅 UI (표준 라이브러리)
-dpo.py                   DPO 선호 학습 (참조 모델 고정, 응답 토큰 로그확률)
-export_hf.py             HuggingFace(Qwen3) 형식 내보내기
-export_gguf.py           GGUF(llama.cpp·Ollama) 내보내기 + Modelfile
+dpo.py                   DPO 선호 학습 (참조 모델 고정, 응답 토큰 로그확률, --resume)
+export_hf.py             HuggingFace(Qwen3) 형식 내보내기 (+ 반대 방향: Qwen3 가중치 읽기)
+export_gguf.py           GGUF(llama.cpp·Ollama) 내보내기 — F32 · F16 · Q8_0 · Q4_0 + Modelfile
 eval.py                  perplexity + KOBEST (선택지 경계 정확 채점, 비조건부 정규화, 예측 쏠림 감지)
 final_eval.py            사전학습 최종 평가 (annealing 전/후 비교)
 sft_eval.py              SFT 평가 (자체 문항 + KOBEST)
+compare_evals.py         평가 결과 두 개를 같은 문항끼리 짝 비교 (McNemar · 차이의 95% 구간)
 bench.py                 처리량·VRAM 벤치마크
+bench_infer.py           추론 속도 측정 (PyTorch fp32/bf16 · 프리픽스 캐시 · GGUF 타입별)
+remeasure.sh             서버에서 한 번에: 미측정 수치(평가 재실행 · 원문 BPB · 양자화 품질) + 짝 비교
 test_model.py            모델 검증 6종
 tests/                   pytest — 추론, 채점 회귀, 데이터로더, 학습·SFT·DPO e2e, 서버, CLI, HF·GGUF 내보내기
 
 tokenizer/               byte-level BPE 구현·학습·테스트 + 학습된 64K vocab
 data/                    다운로드·정제·중복제거·품질분류·토크나이즈·데이터로더·산술 SFT 생성기
 configs/                 debug_30m · mid_125m · base_1b · sft_1b (+ 스모크·CI용)
-evals/                   자체 평가 문항(대화 36 · 산술 200) + 벤치마크 오염 검사(n-gram)
+evals/                   자체 평가 문항(대화 36 · 산술 200) + 벤치마크 오염 검사(n-gram) + 통계(stats.py)
+                         + 원문 기준 bits-per-byte(text_bpb.py) + 양자화 품질(quant_quality.py)
 docs/                    결과 정리, 운영 가이드, 추론 가이드(실측), 그래프
 logs/                    학습 곡선, 마일스톤, 평가 결과 원본
 ```
@@ -287,7 +308,7 @@ VRAM이 34.7GB로 늘어, 같은 GPU를 쓰는 다른 작업(vLLM 등)이 뜰 �
 - **BoolQ는 미확인** — 전 구간 무작위 수준·한쪽 쏠림으로 기록했지만, 이는 채점 버그
   (`"예"`의 채점 토큰 0개)로 설명됩니다. 고친 채점기로 재측정해야 실제 능력을 알 수 있습니다.
 - **annealing의 부작용(재확인 필요)** — 고품질 데이터 전환으로 perplexity는 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가 — RESULTS §2)
-  HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 웹의 서사 텍스트를 너무 줄인 탓으로 봤지만,
+  HellaSwag은 46.2% → 40.0%로 떨어졌습니다(p=0.048로 경계선). 웹의 서사 텍스트를 너무 줄인 탓으로 봤지만,
   이 비교도 버그 있는 채점기로 잰 값이라 재측정 후에 결론을 내려야 합니다.
 - **SFT 데이터 오염** — annealing에 SFT와 같은 데이터를 넣어 SFT 검증 loss가
   일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.

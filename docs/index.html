@@ -269,6 +269,10 @@
         </table>
       </div>
       <p style="color:var(--text-dim); font-size:14px;">
+        대화 평가는 30~36문항이라 이 표의 SFT 전후 차이(정답률 1문항, 멈춤·반복 1~3문항)는 같은 문항 짝 비교에서
+        모두 잡음과 구분되지 않습니다(p=0.25~1.0) — 방향만 읽을 수 있습니다.
+        다른 모델과는 같은 한국어 웹 글의 bits-per-byte로 비교합니다: 공개 모델 기준값은 42dot-PLM-1.3B 0.692 ·
+        Qwen2.5-1.5B 0.937 · Polyglot-ko-1.3B 0.957이고, bebut은 같은 글로 서버에서 재야 합니다.
         유형별로는 <strong style="color:var(--text)">사실 100%, 지시 33%, 계산 0%</strong>입니다.
         자세한 수치와 해석은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>, 모델별 답변 전문은
         <a href="https://github.com/concrete-sangminlee/bebut/blob/main/logs/sft_eval_answers.md">sft_eval_answers.md</a>에 있습니다.
@@ -303,7 +307,7 @@ python serve.py --ckpt checkpoints/sft_1b/latest.pt
 # HuggingFace(Qwen3 호환) 형식 → transformers · vLLM
 python export_hf.py --ckpt checkpoints/sft_1b/latest.pt --out hf/bebut-1.2b-sft
 
-# GGUF → llama.cpp · Ollama (Q8_0이면 1.27GB)
+# GGUF → llama.cpp · Ollama (Q8_0이면 1.28GB)
 python export_gguf.py --ckpt checkpoints/sft_1b/latest.pt --out gguf/bebut.gguf --type q8_0
 cd gguf && ollama create bebut -f Modelfile && ollama run bebut
 
@@ -314,8 +318,8 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
         API 서버는 표준 라이브러리만으로 <code>/v1/chat/completions</code>(SSE 스트리밍)·<code>/v1/completions</code>·<code>/v1/models</code>를
         제공해 openai SDK, LangChain, Open WebUI가 <code>base_url</code>만 바꿔 붙습니다.
         HF·GGUF 내보내기는 구성이 Qwen3와 같다는 점을 이용해 RoPE 차원 순서만 재배열하며, transformers와 llama.cpp로 실제로 읽어 logits·토크나이저 일치를 CI에서 검증합니다.
-        대화 CLI와 서버는 턴 사이에 KV 캐시를 재사용해 대화가 길어져도 첫 토큰 지연이 늘지 않습니다(1.2B, 기록 1,060토큰: 2.04초 → 0.27초).
-        CPU에서는 GGUF Q8_0 + llama.cpp가 16.4 tok/s로 가장 빠릅니다(4코어 실측, PyTorch fp32의 2.0배) —
+        대화 CLI와 서버는 턴 사이에 KV 캐시를 재사용해 대화가 길어져도 첫 토큰 지연이 늘지 않습니다(1.2B, 기록 1,060토큰: 1.39초 → 0.23초).
+        CPU에서는 GGUF Q8_0 + llama.cpp를 권합니다(4코어 실측 15.9 tok/s, PyTorch fp32의 1.9배, 구조가 같은 학습된 모델에서 perplexity 손실 0.3% — 4비트 Q4_0은 더 빠르지만 13%) —
         <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/INFERENCE.md">추론 가이드</a>.
         평가는 KOBEST에 더해 KMMLU(45과목)·HAE-RAE Bench로 다른 한국어 모델과 비교할 수 있습니다.
       </p>
@@ -385,7 +389,7 @@ python dpo.py --base checkpoints/sft_1b/latest.pt --config dpo_1b --data prefs.j
         <li><strong>계산 불가</strong> — 12+7을 14라고 답합니다. 풀이를 보여주는 합성 산술 데이터로 보완하는 실험을 준비해 뒀습니다(효과 미측정).</li>
         <li><strong>드문 사실은 지어냅니다</strong> — 산 높이, 화학식 같은 수치는 매번 다르게 답합니다.</li>
         <li><strong>BoolQ는 미확인</strong> — 한쪽으로 쏠린 무작위 수준으로 기록했지만 채점 버그로 설명됩니다. 재측정이 필요합니다.</li>
-        <li><strong>annealing의 부작용(재확인 필요)</strong> — 고품질 데이터 전환으로 perplexity가 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가) HellaSwag은 46.2% → 40.0%로 떨어졌습니다. 이 비교도 버그 있는 채점기로 잰 값입니다.</li>
+        <li><strong>annealing의 부작용(재확인 필요)</strong> — 고품질 데이터 전환으로 perplexity가 26% 좋아졌다고 적었지만(val의 76%를 annealing이 다시 학습해 과대평가) HellaSwag은 46.2% → 40.0%로 떨어졌습니다(p=0.048로 경계선). 이 비교도 버그 있는 채점기로 잰 값입니다.</li>
         <li><strong>SFT 데이터 오염</strong> — annealing에 SFT와 같은 데이터를 넣어 검증 loss가 일반화가 아니라 기억을 재고 있었습니다. 그래서 별도 문항을 만들어 평가했습니다.</li>
       </ul>
       <p>자세한 내용과 과정에서 배운 것은 <a href="https://github.com/concrete-sangminlee/bebut/blob/main/docs/RESULTS.md">결과 상세</a>에 정리했습니다.</p>

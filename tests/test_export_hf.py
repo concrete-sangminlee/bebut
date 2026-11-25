@@ -242,3 +242,63 @@ def test_cli_from_checkpoint(tmp_path):
     # bf16 반올림만큼의 차이는 허용 — 순열이 틀리면 훨씬 크게 벌어진다
     rel = (ours - theirs).abs().max() / ours.abs().max()
     assert rel < 0.05, rel
+
+
+# ---------------- 원문 BPB: 내보낸 모델이 같은 값을 내는가 ----------------
+
+
+def test_text_bpb_matches_between_checkpoint_and_export(tmp_path, bebut_tok):
+    """같은 글의 bits-per-byte가 이 저장소의 모델과 HF로 내보낸 모델에서 같다 — 토크나이저,
+    가중치, 채점(창 밀기)까지 한 번에 맞는지 본다. evals/text_bpb.py가 다른 HF 모델을 재는 경로다."""
+    from evals.text_bpb import BebutScorer, HFScorer, score_text
+
+    cfg = ModelConfig(vocab_size=bebut_tok.vocab_size, dim=32, n_layers=2, n_heads=2, n_kv_heads=1,
+                      max_seq_len=64)
+    torch.manual_seed(3)
+    model = GPT(cfg).eval()
+    export_hf.export(model.state_dict(), cfg, bebut_tok, str(tmp_path), "fp32", chat=False)
+    docs = ["대한민국은 동아시아의 한반도 남부에 있는 나라이다. 수도는 서울이고 인구는 약 5천만 명이다. " * 4,
+            "Quantum mechanics describes nature at the scale of atoms. 양자역학은 원자 규모의 자연을 다룬다.",
+            "짧은 글 🎉"]
+    ours = score_text(BebutScorer(model, bebut_tok), docs, max_len=48, stride=24)
+    hf = HFScorer(str(tmp_path), start_id=bebut_tok.special_tokens["<|eos|>"])
+    assert all(hf.lossless(d, hf.encode(d)) for d in docs)
+    theirs = score_text(hf, docs, max_len=48, stride=24)
+    assert theirs["tokens"] == ours["tokens"] and theirs["bytes"] == ours["bytes"]
+    assert theirs["bpb"] == pytest.approx(ours["bpb"], rel=1e-4)
+
+
+# ---------------- 역변환: HF(Qwen3) → bebut ----------------
+
+
+def test_import_roundtrip_and_real_hf_model_matches(tmp_path):
+    """내보낸 뒤 다시 읽으면 원래 가중치 그대로다. 그리고 transformers가 만든 Qwen3 모델(이 저장소가
+    내보낸 것이 아닌, HF 쪽 초기화 가중치)을 읽어도 logits가 같다 — 학습된 공개 Qwen3 모델을 이
+    저장소의 GPT로 읽는 경로(evals/quant_quality.py)를 검증한다."""
+    cfg = ModelConfig(vocab_size=512, dim=64, n_layers=2, n_heads=4, n_kv_heads=2, max_seq_len=128)
+    model = _random_gpt(cfg)
+    sd = model.state_dict()
+    back = export_hf.import_state_dict(export_hf.convert_state_dict(sd, cfg), cfg)
+    assert set(back) == set(sd) and all(torch.equal(back[k], sd[k]) for k in sd)
+
+    hf_cfg = transformers.Qwen3Config(vocab_size=300, hidden_size=64, intermediate_size=160, num_hidden_layers=2,
+                                      num_attention_heads=4, num_key_value_heads=2, head_dim=16,
+                                      max_position_embeddings=64, rms_norm_eps=1e-6, rope_theta=1e6,
+                                      tie_word_embeddings=True)
+    torch.manual_seed(5)
+    hf = transformers.Qwen3ForCausalLM(hf_cfg).eval()
+    with torch.no_grad():
+        for n, p in hf.named_parameters():  # norm 가중치가 1이면 재배열 실수가 드러나지 않는다
+            if "norm" in n:
+                p.uniform_(0.5, 1.5)
+    hf.tie_weights()
+    ours_cfg = export_hf.model_config_from_hf(hf_cfg.to_dict())
+    assert (ours_cfg.ffn_dim, ours_cfg.rope_theta, ours_cfg.norm_eps) == (160, 1e6, 1e-6)
+    ours = GPT(ours_cfg).eval()
+    ours.load_state_dict(export_hf.import_state_dict(hf.state_dict(), ours_cfg))
+    idx = torch.randint(0, 300, (2, 40), generator=torch.Generator().manual_seed(2))
+    with torch.no_grad():
+        want = hf(idx).logits
+    assert torch.allclose(_full_logits(ours, idx), want, atol=1e-4, rtol=1e-4)
+    with pytest.raises(ValueError):  # head_dim × heads ≠ hidden (Qwen3-0.6B 같은 구조)는 거절
+        export_hf.model_config_from_hf({**hf_cfg.to_dict(), "head_dim": 32})

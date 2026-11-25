@@ -69,7 +69,7 @@ def cpu_has_fast_bf16() -> bool:
     """CPU가 bf16 행렬곱을 하드웨어로 지원하는지 (AVX512-BF16 / AMX).
 
     지원하면 bf16이 fp32보다 빠르다 — 디코드는 매 토큰 가중치 전체를 읽는 메모리 대역폭
-    싸움이라 가중치가 절반 크기인 bf16이 유리하다 (1.2B 실측 fp32 8.2 → bf16 12.1 tok/s,
+    싸움이라 가중치가 절반 크기인 bf16이 유리하다 (1.2B 실측 fp32 8.3 → bf16 12.4 tok/s,
     docs/INFERENCE.md). 지원하지 않는 CPU에서 bf16은 소프트웨어로 흉내 내 오히려 느리다.
     """
     # mkldnn의 _is_mkldnn_bf16_supported()는 AVX-512만 있어도(bf16 명령 없이 흉내) True라서

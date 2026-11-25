@@ -101,7 +101,7 @@ def test_metadata(exported, real_tok):
     assert _field(r, "qwen3.rope.freq_base") == pytest.approx(CFG.rope_theta)
     assert _field(r, "qwen3.attention.layer_norm_rms_epsilon") == pytest.approx(CFG.norm_eps)
     file_types = {q: _field(gguf.GGUFReader(p), "general.file_type") for q, p in exported.items()}
-    assert file_types == {"f32": 0, "f16": 1, "bf16": 32, "q8_0": 7}
+    assert file_types == {"f32": 0, "f16": 1, "bf16": 32, "q8_0": 7, "q4_0": 2}
 
 
 def test_vocab_arrays(exported, real_tok):
@@ -160,6 +160,59 @@ def test_q8_0_matches_reference_quantizer(exported, model):
         assert t.tensor_type == gguf.GGMLQuantizationType.Q8_0, t.name
         ref = gguf.quants.quantize(src, gguf.GGMLQuantizationType.Q8_0)
         assert np.asarray(t.data).tobytes() == ref.tobytes(), t.name
+
+
+def test_q4_0_matches_reference_quantizer(exported, model):
+    """Q4_0도 gguf-py의 참조 구현과 바이트까지 같다. 출력층과 공유하는 임베딩만 Q8_0으로 남긴다."""
+    r = gguf.GGUFReader(exported["q4_0"])
+    expected = _expected_tensors(model)
+    kinds = set()
+    for t in r.tensors:
+        src = expected[t.name].float().numpy()
+        if src.ndim == 1:
+            assert t.tensor_type == gguf.GGMLQuantizationType.F32
+            continue
+        want = (gguf.GGMLQuantizationType.Q8_0 if t.name == "token_embd.weight"
+                else gguf.GGMLQuantizationType.Q4_0)
+        assert t.tensor_type == want, t.name
+        assert np.asarray(t.data).tobytes() == gguf.quants.quantize(src, want).tobytes(), t.name
+        kinds.add(t.tensor_type.name)
+    assert kinds == {"Q4_0", "Q8_0"}
+    assert os.path.getsize(exported["q4_0"]) < os.path.getsize(exported["q8_0"])
+
+
+def test_quantization_in_chunks_is_byte_identical(monkeypatch):
+    """큰 텐서는 잘라서 양자화한다(중간 배열이 텐서의 예닐곱 배라 통째로 하면 메모리가 모자란다).
+    블록끼리 독립이므로 어떻게 자르든 통째로 한 것과 바이트 단위로 같아야 한다."""
+    torch.manual_seed(0)
+    for dtype in (torch.float32, torch.bfloat16):  # bf16 가중치(공개 모델)도 조각마다 fp32로 바꿔 양자화한다
+        t = (torch.randn(40, 96) * 3).to(dtype)
+        for gtype, fn in ((export_gguf.GGML_Q8_0, export_gguf.quantize_q8_0),
+                          (export_gguf.GGML_Q4_0, export_gguf.quantize_q4_0)):
+            whole = fn(t.float().numpy())
+            for chunk in (32, 96, 1024, 1 << 22):  # 블록 하나 · 한 행 · 여러 행 · 텐서보다 큰 조각
+                monkeypatch.setattr(export_gguf, "QUANT_CHUNK", chunk)
+                assert export_gguf._tensor_bytes(t, gtype) == whole, (dtype, gtype, chunk)
+    assert export_gguf.QUANT_CHUNK % export_gguf.Q8_BLOCK == 0
+
+
+def test_q4_0_quantizer_edge_cases():
+    rng = np.random.default_rng(1)
+    for scale in (1e-3, 1.0, 1e3):
+        x = (rng.standard_normal((8, 96)) * scale).astype(np.float32)
+        x[0, :32] = 0.0                     # 전부 0인 블록
+        x[1, :32] = -np.abs(x[1, :32])      # 전부 음수 (최댓값이 음수 → d가 양수)
+        x[2, 5] = np.abs(x[2, :32]).max() * 4  # 한 값이 유난히 큰 블록 (나머지가 0 근처로 뭉개진다)
+        raw = export_gguf.quantize_q4_0(x)
+        assert raw == gguf.quants.quantize(x, gguf.GGMLQuantizationType.Q4_0).tobytes()
+        assert len(raw) == x.size // 32 * 18
+        deq = export_gguf.dequantize_q4_0(raw, x.shape)
+        assert np.array_equal(deq, gguf.quants.dequantize(
+            np.frombuffer(raw, dtype=np.uint8).reshape(-1, 18 * 3), gguf.GGMLQuantizationType.Q4_0))
+        d = np.abs(x.reshape(-1, 32)).max(1) / 8
+        # 한 칸(d) 이내: 대부분 반 칸, 최댓값 반대쪽 끝(−m 근처)만 7칸까지라 한 칸까지 벌어진다
+        assert (np.abs(deq - x).reshape(-1, 32).max(1) <= d * 1.01 + 1e-12).all()
+        assert np.all(deq[0, :32] == 0)
 
 
 def test_q8_0_quantizer_edge_cases():
@@ -294,7 +347,7 @@ def test_llama_cpp_needs_rope_permutation(llama_cpp, tmp_path, model, real_tok, 
 def test_llama_cpp_half_and_q8_0_are_close(llama_cpp, exported, model, real_tok):
     """F16/BF16/Q8_0은 반올림만큼 다르다. Q8_0은 llama.cpp가 활성값도 8비트로 바꿔 곱해서
     가장 크게 다르다 — 이 테스트의 가중치는 일부러 크게 흔든 것이라 실제 모델보다 오차가 크다."""
-    tol = {"f16": 0.02, "bf16": 0.15, "q8_0": 0.35}  # max|Δlogit| / std(logit)
+    tol = {"f16": 0.02, "bf16": 0.15, "q8_0": 0.35}  # max|Δlogit| / std(logit) — q4_0은 아래 따로
     for q, t in tol.items():
         llm = _llama(llama_cpp, exported[q])
         agree, greedy_ok = [], 0
@@ -308,6 +361,19 @@ def test_llama_cpp_half_and_q8_0_are_close(llama_cpp, exported, model, real_tok)
             greedy_ok += _llama_greedy(llm, ids, 8) == g
         assert np.mean(agree) > 0.7, (q, agree)
         assert greedy_ok >= (3 if q == "f16" else 1), (q, greedy_ok)
+
+
+def test_llama_cpp_q4_0_loads_and_tracks_fp32(llama_cpp, exported, model, real_tok):
+    """Q4_0 파일을 llama.cpp가 읽고, logit이 fp32 모델과 강하게 상관한다. 4비트라 오차는 Q8_0보다
+    크다 — 이 테스트의 가중치는 일부러 크게 흔든 것이라 실제 모델보다 불리한 조건이다."""
+    llm = _llama(llama_cpp, exported["q4_0"])
+    corr = []
+    for text in PROMPTS:
+        ids = real_tok.encode(text)
+        ref, lc = _full_logits(model, ids), _llama_logits(llm, ids)
+        assert np.isfinite(lc).all()
+        corr.append(np.corrcoef(lc.reshape(-1), ref.reshape(-1))[0, 1])
+    assert min(corr) > 0.8, corr
 
 
 def _tokenizer_corpus() -> list[str]:
@@ -390,3 +456,68 @@ def test_cli_from_checkpoint(tmp_path, tiny_tok):
     ref = _full_logits(m.eval(), ids)  # 실제 초기화(std 0.02) 그대로인 모델도 Q8_0으로 맞는다
     lc = np.array(llm.scores[: len(ids)])
     assert np.isfinite(lc).all() and np.abs(lc - ref).max() < 0.05 * ref.std() + 1e-3
+
+
+# ---------------- 양자화 품질 측정 (evals/quant_quality.py) ----------------
+
+
+def test_quant_quality_helpers():
+    from evals.quant_quality import chunks_of, nll_and_top1, summarize
+
+    assert chunks_of(list(range(10)), 4) == [[0, 1, 2, 3], [4, 5, 6, 7]]  # 모자란 꼬리는 버린다
+    assert chunks_of(list(range(10)), 4, limit=1) == [[0, 1, 2, 3]]
+    logits = np.zeros((3, 5), dtype=np.float32)
+    logits[0, 2] = logits[1, 4] = 10.0  # 위치 0은 2를, 위치 1은 4를 예측
+    nll, top1 = nll_and_top1(logits, [0, 2, 3])
+    assert top1.tolist() == [2, 4] and nll[0] < 0.01 and nll[1] > 5  # 첫 토큰은 채점하지 않는다
+    same = summarize(nll, top1, nll, top1)
+    assert same["ppl_change_pct"] == 0 and same["top1_agreement"] == 1.0 and same["tokens"] == 2
+
+
+def test_quant_quality_cli_on_tiny_checkpoint(llama_cpp, tmp_path, real_tok, monkeypatch):
+    """--ckpt 경로를 끝까지: PyTorch fp32 기준과 llama.cpp로 읽은 F16 · Q8_0 · Q4_0을 같은 토큰으로 잰다.
+    F16은 기준과 사실상 같고, 비트를 줄일수록 기준에서 멀어진다."""
+    import sys
+
+    import tokenizer.compare
+    from configs.ci_eval import model as cfg
+    from evals import quant_quality
+
+    torch.manual_seed(0)
+    torch.save({"model": _random_gpt(cfg).state_dict(), "step": 1, "config": "ci_eval"}, tmp_path / "m.pt")
+    text = "대한민국은 동아시아의 한반도 남부에 있는 나라이다. 수도는 서울특별시이며 국화는 무궁화이다. " * 30
+    monkeypatch.setattr(tokenizer.compare, "_stream", lambda *a, **k: [text, text[::2]])
+    out = tmp_path / "q.json"
+    monkeypatch.setattr(sys, "argv", ["quant_quality", "--ckpt", str(tmp_path / "m.pt"), "--ctx", "32",
+                                      "--max-chunks", "6", "--threads", "2", "--llama-types", "q4_k_m",
+                                      "--torch-check", "--out", str(out)])
+    quant_quality.main()
+    res = json.load(open(out, encoding="utf-8"))["results"]
+    # 교차 확인: llama.cpp가 읽은 Q4_0 GGUF는 fp32 기준보다, 같은 양자화 가중치를 넣은 PyTorch 모델에 훨씬
+    # 가깝다 — 파일의 블록 배치·스케일·텐서별 타입이 의도대로 읽힌다는 뜻이다(예전 검사는 fp32와의 상관 > 0.8뿐).
+    # 남는 차이는 llama.cpp가 양자화 가중치와 곱할 때 활성값도 8비트 블록으로 바꾸는 데서 온다. Q8_0은 가중치
+    # 오차와 그 오차가 비슷한 크기라 '더 가깝다'까지만 본다
+    assert res["q4_0"]["vs_torch_dequant"]["mean_abs_nll_diff"] < res["q4_0"]["mean_abs_nll_diff"] / 3, res["q4_0"]
+    assert res["q8_0"]["vs_torch_dequant"]["mean_abs_nll_diff"] < res["q8_0"]["mean_abs_nll_diff"], res["q8_0"]
+    assert all(res[q]["vs_torch_dequant"]["top1_agreement"] > 0.9 for q in ("q8_0", "q4_0"))
+    assert res["q4_0"]["torch_dequant"]["mean_abs_nll_diff"] > res["q8_0"]["torch_dequant"]["mean_abs_nll_diff"]
+    assert "torch_dequant" not in res["f16"]
+    assert set(res) == {"torch_fp32", "f16", "q8_0", "q4_0", "llama:q4_k_m"} and res["torch_fp32"]["tokens"] == 6 * 31
+    # llama.cpp 자체 양자화기로 만든 K-양자화도 같은 묶음으로 잰다 (F16보다 작고, 기준에서 조금 벗어난다)
+    assert res["llama:q4_k_m"]["bytes"] < res["q8_0"]["bytes"] and res["llama:q4_k_m"]["mean_abs_nll_diff"] > 0
+    assert res["f16"]["mean_abs_nll_diff"] < res["q8_0"]["mean_abs_nll_diff"] < res["q4_0"]["mean_abs_nll_diff"]
+    assert res["f16"]["top1_agreement"] > 0.9 and abs(res["f16"]["ppl_change_pct"]) < 1.0
+    assert res["q4_0"]["bytes"] < res["q8_0"]["bytes"] < res["f16"]["bytes"]
+
+
+def test_bench_infer_with_gguf(llama_cpp, tmp_path):
+    """추론 벤치의 GGUF 구간: 실제 토크나이저 vocab의 작은 모델을 타입별로 내보내 llama.cpp로 잰다."""
+    out = tmp_path / "bench.json"
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "bench_infer.py"), "--config", "ci_eval", "--reps", "1",
+                        "--threads", "2", "--history", "200", "--types", "f16", "q4_0", "--out", str(out)],
+                       capture_output=True, text=True, timeout=300, cwd=ROOT,
+                       env={**os.environ, "PYTHONPATH": ROOT})
+    assert r.returncode == 0, r.stderr[-2000:]
+    g = json.load(open(out, encoding="utf-8"))["gguf"]
+    assert set(g) == {"f16", "q4_0"} and g["q4_0"]["bytes"] < g["f16"]["bytes"]
+    assert all(v["decode_tok_s"] > 0 for v in g.values())

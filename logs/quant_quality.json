@@ -1,0 +1,105 @@
+{
+ "model": "Qwen/Qwen3-1.7B-Base",
+ "params": 1720574976,
+ "ctx": 256,
+ "chunks": 63,
+ "text": "FineWeb-2 ko test",
+ "results": {
+  "torch_fp32": {
+   "ppl": 11.241605878453841,
+   "nll": 2.419621706008911,
+   "tokens": 16065,
+   "seconds": 141
+  },
+  "f16": {
+   "ppl": 11.241544233845751,
+   "nll": 2.419616222381592,
+   "tokens": 16065,
+   "ppl_change_pct": -0.0005483612284251649,
+   "mean_abs_nll_diff": 0.0006758327945135534,
+   "top1_agreement": 0.9996265172735761,
+   "bytes": 3447181408,
+   "bits_per_weight": 16.028043908968254,
+   "seconds": 316
+  },
+  "q8_0": {
+   "ppl": 11.273443501302866,
+   "nll": 2.422449827194214,
+   "tokens": 16065,
+   "ppl_change_pct": 0.28321240927016156,
+   "mean_abs_nll_diff": 0.04754333570599556,
+   "top1_agreement": 0.9675070028011205,
+   "bytes": 1834258528,
+   "bits_per_weight": 8.528584007489366,
+   "seconds": 728,
+   "torch_dequant": {
+    "ppl": 11.263250604983348,
+    "nll": 2.4215452671051025,
+    "tokens": 16065,
+    "ppl_change_pct": 0.19254123266314593,
+    "mean_abs_nll_diff": 0.032681904733181,
+    "top1_agreement": 0.9770930594460007
+   },
+   "vs_torch_dequant": {
+    "mean_abs_nll_diff": 0.03471294417977333,
+    "top1_agreement": 0.9763460939931529
+   }
+  },
+  "q4_0": {
+   "ppl": 12.695460731228964,
+   "nll": 2.5412445068359375,
+   "tokens": 16065,
+   "ppl_change_pct": 12.93280398276233,
+   "mean_abs_nll_diff": 0.350671648979187,
+   "top1_agreement": 0.8039838157485216,
+   "bytes": 1129615456,
+   "bits_per_weight": 5.252269604088442,
+   "seconds": 748,
+   "torch_dequant": {
+    "ppl": 12.68079209535386,
+    "nll": 2.540088415145874,
+    "tokens": 16065,
+    "ppl_change_pct": 12.802318747523667,
+    "mean_abs_nll_diff": 0.34760767221450806,
+    "top1_agreement": 0.8061002178649237
+   },
+   "vs_torch_dequant": {
+    "mean_abs_nll_diff": 0.03696347773075104,
+    "top1_agreement": 0.9755991285403051
+   }
+  },
+  "llama:q4_k_m": {
+   "ppl": 12.233251556324436,
+   "nll": 2.504157781600952,
+   "tokens": 16065,
+   "ppl_change_pct": 8.821210141971147,
+   "mean_abs_nll_diff": 0.26538726687431335,
+   "top1_agreement": 0.8464363523187053,
+   "bytes": 1107241056,
+   "bits_per_weight": 5.148237404099035,
+   "seconds": 739
+  },
+  "llama:q5_k_m": {
+   "ppl": 11.70070487831165,
+   "nll": 2.459649085998535,
+   "tokens": 16065,
+   "ppl_change_pct": 4.0839271970718904,
+   "mean_abs_nll_diff": 0.16648457944393158,
+   "top1_agreement": 0.902583255524432,
+   "bytes": 1257711712,
+   "bits_per_weight": 5.847867042325275,
+   "seconds": 715
+  },
+  "llama:q6_k": {
+   "ppl": 11.50522999249685,
+   "nll": 2.4428017139434814,
+   "tokens": 16065,
+   "ppl_change_pct": 2.345075222289039,
+   "mean_abs_nll_diff": 0.12447624653577805,
+   "top1_agreement": 0.9222533457827575,
+   "bytes": 1417586784,
+   "bits_per_weight": 6.591223532940654,
+   "seconds": 676
+  }
+ }
+}
